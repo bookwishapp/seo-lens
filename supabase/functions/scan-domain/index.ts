@@ -88,7 +88,7 @@ serve(async (req) => {
         }
       }
 
-      // Store results in database
+      // Store results in database (upsert based on domain_id)
       const { error } = await supabaseClient
         .from('domain_status')
         .upsert({
@@ -97,6 +97,8 @@ serve(async (req) => {
           final_status_code: finalStatusCode,
           redirect_chain: redirectChain,
           last_checked_at: new Date().toISOString(),
+        }, {
+          onConflict: 'domain_id'
         })
 
       if (error) throw error
@@ -126,6 +128,8 @@ serve(async (req) => {
           final_status_code: null,
           redirect_chain: null,
           last_checked_at: new Date().toISOString(),
+        }, {
+          onConflict: 'domain_id'
         })
 
       return new Response(
