@@ -38,20 +38,26 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
               SizedBox(width: 12),
-              Text('Scanning domain...'),
+              Text('Scanning domain and pages...'),
             ],
           ),
-          duration: Duration(seconds: 2),
+          duration: Duration(seconds: 5),
         ),
       );
     }
 
     try {
-      await ref.read(scanServiceProvider).scanDomain(
+      // Run full scan (domain status + page SEO analysis)
+      await ref.read(scanServiceProvider).fullScan(
             domainId: domain.id,
             domainName: domain.domainName,
           );
+
+      // Invalidate all related providers to refresh data
       ref.invalidate(domainStatusProvider(widget.domainId));
+      ref.invalidate(sitePagesProvider(widget.domainId));
+      ref.invalidate(suggestionsProvider);
+      ref.invalidate(suggestionCountsProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -449,9 +455,11 @@ class _PagesSection extends StatelessWidget {
                     children: [
                       Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
                       const SizedBox(width: 8),
-                      Text(
-                        'Page scanning coming soon',
-                        style: TextStyle(color: Colors.grey[600]),
+                      Expanded(
+                        child: Text(
+                          'No pages scanned yet. Press the refresh button to scan.',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
                       ),
                     ],
                   ),
@@ -467,25 +475,112 @@ class _PagesSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Pages',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Pages (${pages.length})',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 ...pages.map((page) {
-                  return ListTile(
-                    leading: Icon(
-                      page.httpStatus == 200
-                          ? Icons.check_circle
-                          : Icons.error,
-                      color:
-                          page.httpStatus == 200 ? Colors.green : Colors.red,
+                  final statusColor = page.httpStatus != null
+                      ? (page.httpStatus! >= 200 && page.httpStatus! < 300
+                          ? Colors.green
+                          : page.httpStatus! >= 300 && page.httpStatus! < 400
+                              ? Colors.orange
+                              : Colors.red)
+                      : Colors.grey;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                page.httpStatus != null && page.httpStatus! >= 200 && page.httpStatus! < 300
+                                    ? Icons.check_circle
+                                    : Icons.error,
+                                color: statusColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  page.title ?? 'No title',
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontStyle: page.title == null ? FontStyle.italic : null,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (page.httpStatus != null)
+                                Chip(
+                                  label: Text(
+                                    page.httpStatus.toString(),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  backgroundColor: statusColor.withOpacity(0.2),
+                                  side: BorderSide(color: statusColor),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            page.url,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (page.metaDescription != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              page.metaDescription!,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          if (page.hasSeoIssues) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 4,
+                              children: page.seoIssues.map((issue) {
+                                return Chip(
+                                  label: Text(
+                                    issue,
+                                    style: const TextStyle(fontSize: 10),
+                                  ),
+                                  backgroundColor: Colors.orange.withOpacity(0.2),
+                                  side: const BorderSide(color: Colors.orange),
+                                  visualDensity: VisualDensity.compact,
+                                  avatar: const Icon(Icons.warning, size: 14, color: Colors.orange),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          Text(
+                            'Last scanned: ${_formatDate(page.lastScannedAt)}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    title: Text(page.title ?? page.url),
-                    subtitle: Text(page.url),
-                    trailing: page.hasSeoIssues
-                        ? const Icon(Icons.warning, color: Colors.orange)
-                        : null,
                   );
                 }).toList(),
               ],
@@ -493,7 +588,12 @@ class _PagesSection extends StatelessWidget {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
       error: (error, stack) => Card(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -501,6 +601,10 @@ class _PagesSection extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
 
