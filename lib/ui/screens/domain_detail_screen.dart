@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers.dart';
 
 /// Domain detail screen
-class DomainDetailScreen extends ConsumerWidget {
+class DomainDetailScreen extends ConsumerStatefulWidget {
   final String domainId;
 
   const DomainDetailScreen({
@@ -12,41 +12,105 @@ class DomainDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final domainAsync = ref.watch(domainProvider(domainId));
-    final statusAsync = ref.watch(domainStatusProvider(domainId));
-    final pagesAsync = ref.watch(sitePagesProvider(domainId));
+  ConsumerState<DomainDetailScreen> createState() => _DomainDetailScreenState();
+}
+
+class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
+  bool _isScanning = false;
+
+  Future<void> _scanDomain() async {
+    final domain = await ref.read(domainProvider(widget.domainId).future);
+    if (domain == null) return;
+
+    setState(() => _isScanning = true);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('Scanning domain...'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    try {
+      await ref.read(scanServiceProvider).scanDomain(
+            domainId: domain.id,
+            domainName: domain.domainName,
+          );
+      ref.invalidate(domainStatusProvider(widget.domainId));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Scan completed successfully'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Scan failed: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final domainAsync = ref.watch(domainProvider(widget.domainId));
+    final statusAsync = ref.watch(domainStatusProvider(widget.domainId));
+    final pagesAsync = ref.watch(sitePagesProvider(widget.domainId));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Domain Details'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              final domain = await ref.read(domainProvider(domainId).future);
-              if (domain == null) return;
-
-              try {
-                await ref.read(scanServiceProvider).scanDomain(
-                      domainId: domain.id,
-                      domainName: domain.domainName,
-                    );
-                ref.invalidate(domainStatusProvider(domainId));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Scan started')),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Scan failed: $e')),
-                  );
-                }
-              }
-            },
-          ),
+          if (_isScanning)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _scanDomain,
+            ),
         ],
       ),
       body: domainAsync.when(
@@ -227,72 +291,96 @@ class _StatusSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Status & Redirects',
-              style: Theme.of(context).textTheme.titleMedium,
+    return statusAsync.when(
+      data: (status) {
+        if (status == null) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Status & Redirects',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Click the refresh button to scan this domain',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            statusAsync.when(
-              data: (status) {
-                if (status == null) {
-                  return const Text('Not yet scanned');
-                }
+          );
+        }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _StatusChip(status: status.statusLabel),
-                    const SizedBox(height: 12),
-                    if (status.finalUrl != null) ...[
-                      const Text('Final URL:',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(status.finalUrl!),
-                      const SizedBox(height: 8),
-                    ],
-                    if (status.finalStatusCode != null) ...[
-                      const Text('Status Code:',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(status.finalStatusCode.toString()),
-                      const SizedBox(height: 8),
-                    ],
-                    if (status.hasRedirects) ...[
-                      const Text('Redirect Chain:',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      ...status.redirectChain!.map((hop) => Padding(
-                            padding: const EdgeInsets.only(left: 8, top: 4),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.arrow_forward, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${hop.url} (${hop.statusCode})',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                ),
-                              ],
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Status & Redirects',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 16),
+                _StatusChip(status: status.statusLabel),
+                const SizedBox(height: 12),
+                if (status.finalUrl != null) ...[
+                  const Text('Final URL:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(status.finalUrl!),
+                  const SizedBox(height: 8),
+                ],
+                if (status.finalStatusCode != null) ...[
+                  const Text('Status Code:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(status.finalStatusCode.toString()),
+                  const SizedBox(height: 8),
+                ],
+                if (status.hasRedirects) ...[
+                  const Text('Redirect Chain:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  ...status.redirectChain!.map((hop) => Padding(
+                        padding: const EdgeInsets.only(left: 8, top: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.arrow_forward, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${hop.url} (${hop.statusCode})',
+                                style: const TextStyle(fontSize: 12),
+                              ),
                             ),
-                          )),
-                    ],
-                    const SizedBox(height: 8),
-                    Text(
-                      'Last checked: ${_formatDate(status.lastCheckedAt)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                );
-              },
-              loading: () => const CircularProgressIndicator(),
-              error: (error, stack) => Text('Error: $error'),
+                          ],
+                        ),
+                      )),
+                ],
+                const SizedBox(height: 8),
+                Text(
+                  'Last checked: ${_formatDate(status.lastCheckedAt)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
-          ],
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text('Error: $error'),
         ),
       ),
     );
@@ -340,46 +428,73 @@ class _PagesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Pages',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 16),
-            pagesAsync.when(
-              data: (pages) {
-                if (pages.isEmpty) {
-                  return const Text('No pages scanned yet');
-                }
-
-                return Column(
-                  children: pages.map((page) {
-                    return ListTile(
-                      leading: Icon(
-                        page.httpStatus == 200
-                            ? Icons.check_circle
-                            : Icons.error,
-                        color:
-                            page.httpStatus == 200 ? Colors.green : Colors.red,
+    return pagesAsync.when(
+      data: (pages) {
+        if (pages.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pages',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Page scanning coming soon',
+                        style: TextStyle(color: Colors.grey[600]),
                       ),
-                      title: Text(page.title ?? page.url),
-                      subtitle: Text(page.url),
-                      trailing: page.hasSeoIssues
-                          ? const Icon(Icons.warning, color: Colors.orange)
-                          : null,
-                    );
-                  }).toList(),
-                );
-              },
-              loading: () => const CircularProgressIndicator(),
-              error: (error, stack) => Text('Error: $error'),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
+          );
+        }
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pages',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 16),
+                ...pages.map((page) {
+                  return ListTile(
+                    leading: Icon(
+                      page.httpStatus == 200
+                          ? Icons.check_circle
+                          : Icons.error,
+                      color:
+                          page.httpStatus == 200 ? Colors.green : Colors.red,
+                    ),
+                    title: Text(page.title ?? page.url),
+                    subtitle: Text(page.url),
+                    trailing: page.hasSeoIssues
+                        ? const Icon(Icons.warning, color: Colors.orange)
+                        : null,
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text('Error: $error'),
         ),
       ),
     );
