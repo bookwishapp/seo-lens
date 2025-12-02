@@ -70,13 +70,33 @@ class _SuggestionsScreenState extends ConsumerState<SuggestionsScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.check_circle, size: 64,
-                            color: Colors.green),
+                        Icon(
+                          _statusFilter == null || _statusFilter == SuggestionStatus.open
+                              ? Icons.check_circle
+                              : Icons.filter_list_off,
+                          size: 64,
+                          color: _statusFilter == null || _statusFilter == SuggestionStatus.open
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           _statusFilter == null
-                              ? 'No suggestions yet'
-                              : 'No ${_statusFilter!.label.toLowerCase()} suggestions',
+                              ? 'No issues found'
+                              : _statusFilter == SuggestionStatus.open
+                                  ? 'All clear! No open issues'
+                                  : 'No ${_statusFilter!.label.toLowerCase()} suggestions',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _statusFilter == null || _statusFilter == SuggestionStatus.open
+                              ? 'Your domains are looking good!\nScan more domains to check for SEO issues.'
+                              : 'Try a different filter to see other suggestions.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
                         ),
                       ],
                     ),
