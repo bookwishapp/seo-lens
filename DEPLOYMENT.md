@@ -9,21 +9,18 @@ This app requires the following environment variables:
 
 ## Local Development
 
-1. Copy `.env.example` to `.env.local`:
+1. Ensure `.env.local` exists with your Supabase credentials (it should already be there)
+
+2. Run the app using the helper script:
    ```bash
-   cp .env.example .env.local
+   ./run_local.sh
    ```
 
-2. Fill in your Supabase credentials in `.env.local`
-
-3. Run with environment variables:
+   Or manually with:
    ```bash
-   flutter run -d chrome --dart-define=SUPABASE_URL=$(grep SUPABASE_URL .env.local | cut -d '=' -f2) --dart-define=SUPABASE_ANON_KEY=$(grep SUPABASE_ANON_KEY .env.local | cut -d '=' -f2)
-   ```
-
-   Or use this shortcut:
-   ```bash
-   source .env.local && flutter run -d chrome --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+   flutter run -d chrome \
+     --dart-define=SUPABASE_URL=https://npvynslhkwcstiserepx.supabase.co \
+     --dart-define=SUPABASE_ANON_KEY=sb_publishable_t8N5t8w5xmCjaSFrHp1GmA_oTO06FSY
    ```
 
 ## Vercel Deployment
