@@ -276,7 +276,7 @@ class _HeaderSection extends StatelessWidget {
             if (domain.projectTag != null) ...[
               const SizedBox(height: 12),
               Chip(
-                label: Text(domain.projectTag),
+                label: Text(domain.projectTag!),
                 avatar: const Icon(Icons.folder, size: 16),
               ),
             ],
