@@ -21,27 +21,33 @@ class DomainDetailScreen extends ConsumerStatefulWidget {
 class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
   bool _isScanning = false;
 
-  Future<void> _scanDomain() async {
+  Future<void> _scanDomain({int maxPages = 50}) async {
     final domain = await ref.read(domainProvider(widget.domainId).future);
     if (domain == null) return;
 
     setState(() => _isScanning = true);
 
+    final scanLabel = maxPages <= 10
+        ? 'Quick scan'
+        : maxPages <= 25
+            ? 'Standard scan'
+            : 'Deep scan';
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
-              SizedBox(width: 12),
-              Expanded(child: Text('Crawling site (up to 50 pages)...')),
+              const SizedBox(width: 12),
+              Expanded(child: Text('$scanLabel (up to $maxPages pages)...')),
             ],
           ),
-          duration: Duration(seconds: 60),
+          duration: Duration(seconds: maxPages * 2),
         ),
       );
     }
@@ -51,7 +57,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
       final result = await ref.read(scanServiceProvider).fullScan(
             domainId: domain.id,
             domainName: domain.domainName,
-            maxPages: 50,
+            maxPages: maxPages,
           );
 
       // Invalidate all related providers to refresh data
@@ -121,9 +127,42 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
               ),
             )
           else
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _scanDomain,
+            PopupMenuButton<int>(
+              icon: const Icon(Icons.radar),
+              tooltip: 'Scan domain',
+              onSelected: (maxPages) => _scanDomain(maxPages: maxPages),
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 10,
+                  child: ListTile(
+                    leading: Icon(Icons.bolt),
+                    title: Text('Quick Scan'),
+                    subtitle: Text('Up to 10 pages'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 25,
+                  child: ListTile(
+                    leading: Icon(Icons.search),
+                    title: Text('Standard Scan'),
+                    subtitle: Text('Up to 25 pages'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 50,
+                  child: ListTile(
+                    leading: Icon(Icons.radar),
+                    title: Text('Deep Scan'),
+                    subtitle: Text('Up to 50 pages'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+              ],
             ),
         ],
       ),
