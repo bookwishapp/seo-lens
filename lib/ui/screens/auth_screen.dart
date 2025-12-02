@@ -45,23 +45,42 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+
+        if (mounted) {
+          // Check if user has domains - if not, go to onboarding
+          final domains = await ref.read(domainsProvider.future);
+          if (domains.isEmpty) {
+            context.go('/onboarding');
+          } else {
+            context.go('/home');
+          }
+        }
       } else {
-        await authService.signUp(
+        final response = await authService.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text,
           displayName: _displayNameController.text.trim().isNotEmpty
               ? _displayNameController.text.trim()
               : null,
         );
-      }
 
-      if (mounted) {
-        // Check if user has domains - if not, go to onboarding
-        final domains = await ref.read(domainsProvider.future);
-        if (domains.isEmpty) {
-          context.go('/onboarding');
-        } else {
-          context.go('/home');
+        if (mounted) {
+          // Check if we got a session (no email confirmation required)
+          if (response.session != null) {
+            final domains = await ref.read(domainsProvider.future);
+            if (domains.isEmpty) {
+              context.go('/onboarding');
+            } else {
+              context.go('/home');
+            }
+          } else {
+            // Email confirmation required - show message
+            setState(() {
+              _isLoading = false;
+              _errorMessage = null;
+            });
+            _showConfirmationDialog();
+          }
         }
       }
     } catch (e) {
@@ -70,6 +89,31 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _showConfirmationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Check your email'),
+        content: Text(
+          'We sent a confirmation link to ${_emailController.text.trim()}. '
+          'Please click the link to verify your account, then come back and log in.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _isLogin = true; // Switch to login mode
+              });
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
