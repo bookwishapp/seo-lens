@@ -10,7 +10,7 @@ interface ScanRequest {
 
 interface RedirectHop {
   url: string
-  statusCode: number
+  status_code: number
 }
 
 serve(async (req) => {
@@ -70,7 +70,7 @@ serve(async (req) => {
         // Add to redirect chain
         redirectChain.push({
           url: currentUrl,
-          statusCode: response.status,
+          status_code: response.status,
         })
 
         // Check if this is a redirect
