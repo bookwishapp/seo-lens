@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/models/domain.dart';
+import '../../data/models/domain_status.dart';
+import '../../data/models/site_page.dart';
 import '../../data/providers.dart';
 
 /// Domain detail screen
@@ -159,9 +162,9 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
 }
 
 class _MobileLayout extends StatelessWidget {
-  final domain;
-  final statusAsync;
-  final pagesAsync;
+  final Domain domain;
+  final AsyncValue<DomainStatus?> statusAsync;
+  final AsyncValue<List<SitePage>> pagesAsync;
   final Function(String) onNotesUpdated;
 
   const _MobileLayout({
@@ -192,9 +195,9 @@ class _MobileLayout extends StatelessWidget {
 }
 
 class _DesktopLayout extends StatelessWidget {
-  final domain;
-  final statusAsync;
-  final pagesAsync;
+  final Domain domain;
+  final AsyncValue<DomainStatus?> statusAsync;
+  final AsyncValue<List<SitePage>> pagesAsync;
   final Function(String) onNotesUpdated;
 
   const _DesktopLayout({
@@ -236,7 +239,7 @@ class _DesktopLayout extends StatelessWidget {
 }
 
 class _HeaderSection extends StatelessWidget {
-  final domain;
+  final Domain domain;
 
   const _HeaderSection({required this.domain});
 
@@ -285,7 +288,7 @@ class _HeaderSection extends StatelessWidget {
 }
 
 class _StatusSection extends StatelessWidget {
-  final statusAsync;
+  final AsyncValue<DomainStatus?> statusAsync;
 
   const _StatusSection({required this.statusAsync});
 
@@ -422,7 +425,7 @@ class _StatusChip extends StatelessWidget {
 }
 
 class _PagesSection extends StatelessWidget {
-  final pagesAsync;
+  final AsyncValue<List<SitePage>> pagesAsync;
 
   const _PagesSection({required this.pagesAsync});
 
