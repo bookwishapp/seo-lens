@@ -131,8 +131,8 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                   onNotesUpdated: (notes) async {
                     await ref
                         .read(domainServiceProvider)
-                        .updateDomain(domainId: domainId, notes: notes);
-                    ref.invalidate(domainProvider(domainId));
+                        .updateDomain(domainId: widget.domainId, notes: notes);
+                    ref.invalidate(domainProvider(widget.domainId));
                   },
                 );
               } else {
@@ -143,8 +143,8 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                   onNotesUpdated: (notes) async {
                     await ref
                         .read(domainServiceProvider)
-                        .updateDomain(domainId: domainId, notes: notes);
-                    ref.invalidate(domainProvider(domainId));
+                        .updateDomain(domainId: widget.domainId, notes: notes);
+                    ref.invalidate(domainProvider(widget.domainId));
                   },
                 );
               }
