@@ -6,14 +6,49 @@ import 'supabase_config.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase
-  await SupabaseConfig.initialize();
+  try {
+    // Initialize Supabase
+    await SupabaseConfig.initialize();
 
-  runApp(
-    const ProviderScope(
-      child: SEOLensApp(),
-    ),
-  );
+    runApp(
+      const ProviderScope(
+        child: SEOLensApp(),
+      ),
+    );
+  } catch (e, stackTrace) {
+    // If initialization fails, show error
+    print('Failed to initialize app: $e');
+    print('Stack trace: $stackTrace');
+
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Failed to initialize app',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    e.toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SEOLensApp extends ConsumerWidget {

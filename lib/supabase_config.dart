@@ -21,6 +21,25 @@ class SupabaseConfig {
 
   /// Initialize Supabase
   static Future<void> initialize() async {
+    // Validate configuration
+    if (supabaseUrl == 'YOUR_SUPABASE_URL_HERE' || supabaseUrl.isEmpty) {
+      throw Exception(
+        'SUPABASE_URL is not set. Please set it via --dart-define=SUPABASE_URL=<your-url> '
+        'or configure it in Vercel environment variables.',
+      );
+    }
+
+    if (supabaseAnonKey == 'YOUR_SUPABASE_ANON_KEY_HERE' ||
+        supabaseAnonKey.isEmpty) {
+      throw Exception(
+        'SUPABASE_ANON_KEY is not set. Please set it via --dart-define=SUPABASE_ANON_KEY=<your-key> '
+        'or configure it in Vercel environment variables.',
+      );
+    }
+
+    print('Initializing Supabase...');
+    print('URL: ${supabaseUrl.substring(0, 20)}...');
+
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
@@ -28,6 +47,8 @@ class SupabaseConfig {
         authFlowType: AuthFlowType.pkce,
       ),
     );
+
+    print('Supabase initialized successfully');
   }
 }
 
