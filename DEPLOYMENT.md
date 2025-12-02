@@ -19,8 +19,8 @@ This app requires the following environment variables:
    Or manually with:
    ```bash
    flutter run -d chrome \
-     --dart-define=SUPABASE_URL=https://npvynslhkwcstiserepx.supabase.co \
-     --dart-define=SUPABASE_ANON_KEY=sb_publishable_t8N5t8w5xmCjaSFrHp1GmA_oTO06FSY
+     --dart-define=SUPABASE_URL=your_supabase_url \
+     --dart-define=SUPABASE_ANON_KEY=your_anon_key
    ```
 
 ## Vercel Deployment
