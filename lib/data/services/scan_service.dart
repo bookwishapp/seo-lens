@@ -47,16 +47,20 @@ class ScanService {
 
   /// Scan domain pages for SEO data and generate suggestions
   ///
-  /// Fetches the homepage, parses SEO elements (title, meta, h1, etc.),
+  /// Crawls pages starting from homepage, parses SEO elements,
   /// saves to site_pages, and creates suggestions based on SEO rules.
-  Future<SitePage?> scanDomainPages({
+  ///
+  /// [maxPages] controls how many pages to crawl (default 50)
+  Future<({int pagesScanned, int suggestionsCreated})?> scanDomainPages({
     required String domainId,
+    int maxPages = 50,
   }) async {
     try {
       final response = await _client.functions.invoke(
         'scan-domain-pages',
         body: {
           'domainId': domainId,
+          'maxPages': maxPages,
         },
       );
 
@@ -69,21 +73,10 @@ class ScanService {
         throw Exception(data['error'] ?? 'Unknown error');
       }
 
-      // Fetch the updated page from database
-      final pageId = data['pageId'] as String?;
-      if (pageId != null) {
-        final pageResponse = await _client
-            .from('site_pages')
-            .select()
-            .eq('id', pageId)
-            .maybeSingle();
-
-        if (pageResponse != null) {
-          return SitePage.fromJson(pageResponse);
-        }
-      }
-
-      return null;
+      return (
+        pagesScanned: data['pagesScanned'] as int? ?? 0,
+        suggestionsCreated: data['suggestionsCreated'] as int? ?? 0,
+      );
     } catch (e) {
       print('Page scan failed for domain $domainId: $e');
       rethrow;
@@ -92,10 +85,13 @@ class ScanService {
 
   /// Full domain scan - status + pages + suggestions
   ///
-  /// Runs both the domain status scan and page scan sequentially.
-  Future<({DomainStatus status, SitePage? page})> fullScan({
+  /// Runs both the domain status scan and page crawl sequentially.
+  ///
+  /// [maxPages] controls how many pages to crawl (default 50)
+  Future<({DomainStatus status, int pagesScanned, int suggestionsCreated})> fullScan({
     required String domainId,
     required String domainName,
+    int maxPages = 50,
   }) async {
     // First scan domain status (redirects, final URL)
     final status = await scanDomain(
@@ -103,16 +99,21 @@ class ScanService {
       domainName: domainName,
     );
 
-    // Then scan pages for SEO data
-    SitePage? page;
+    // Then crawl pages for SEO data
+    int pagesScanned = 0;
+    int suggestionsCreated = 0;
     try {
-      page = await scanDomainPages(domainId: domainId);
+      final result = await scanDomainPages(domainId: domainId, maxPages: maxPages);
+      if (result != null) {
+        pagesScanned = result.pagesScanned;
+        suggestionsCreated = result.suggestionsCreated;
+      }
     } catch (e) {
       // Log but don't fail - domain status is still valuable
       print('Page scan failed, continuing: $e');
     }
 
-    return (status: status, page: page);
+    return (status: status, pagesScanned: pagesScanned, suggestionsCreated: suggestionsCreated);
   }
 
   /// Scan multiple domains

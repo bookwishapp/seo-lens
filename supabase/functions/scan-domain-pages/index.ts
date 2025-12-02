@@ -1,11 +1,23 @@
-// Supabase Edge Function to scan domain pages and generate SEO suggestions
+// Supabase Edge Function to crawl domain pages and generate SEO suggestions
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
-import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts'
+import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts'
 
 interface ScanRequest {
   domainId: string
+  maxPages?: number
+}
+
+interface PageData {
+  url: string
+  httpStatus: number
+  title: string | null
+  metaDescription: string | null
+  canonical: string | null
+  robots: string | null
+  h1: string | null
+  internalLinks: string[]
 }
 
 interface SuggestionInsert {
@@ -24,6 +36,225 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Parse a page and extract SEO data + internal links
+async function parsePage(url: string, baseOrigin: string): Promise<PageData | null> {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'SEOLens/1.0 (Page Scanner)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      redirect: 'follow',
+    })
+
+    const html = await response.text()
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+
+    if (!doc) return null
+
+    const title = doc.querySelector('title')?.textContent?.trim() ?? null
+    const metaDescription = doc.querySelector('meta[name="description"]')?.getAttribute('content')?.trim() ?? null
+    const canonical = doc.querySelector('link[rel="canonical"]')?.getAttribute('href')?.trim() ?? null
+    const robots = doc.querySelector('meta[name="robots"]')?.getAttribute('content')?.trim() ?? null
+    const h1 = doc.querySelector('h1')?.textContent?.trim() ?? null
+
+    // Extract internal links
+    const internalLinks: string[] = []
+    const anchors = doc.querySelectorAll('a[href]')
+
+    for (let i = 0; i < anchors.length; i++) {
+      const anchor = anchors[i] as Element
+      const href = anchor.getAttribute('href')
+      if (!href) continue
+
+      try {
+        const linkUrl = new URL(href, url)
+
+        // Only same-origin links
+        if (linkUrl.origin !== baseOrigin) continue
+
+        // Skip anchors, javascript, mailto, tel
+        if (linkUrl.href.includes('#') ||
+            href.startsWith('javascript:') ||
+            href.startsWith('mailto:') ||
+            href.startsWith('tel:')) continue
+
+        // Skip common non-page extensions
+        const path = linkUrl.pathname.toLowerCase()
+        if (path.match(/\.(jpg|jpeg|png|gif|svg|webp|pdf|zip|css|js|ico|woff|woff2|ttf|eot)$/)) continue
+
+        // Normalize URL (remove trailing slash, fragment)
+        linkUrl.hash = ''
+        let normalizedUrl = linkUrl.href
+        if (normalizedUrl.endsWith('/') && normalizedUrl !== baseOrigin + '/') {
+          normalizedUrl = normalizedUrl.slice(0, -1)
+        }
+
+        if (!internalLinks.includes(normalizedUrl)) {
+          internalLinks.push(normalizedUrl)
+        }
+      } catch {
+        // Invalid URL, skip
+      }
+    }
+
+    return {
+      url,
+      httpStatus: response.status,
+      title,
+      metaDescription,
+      canonical,
+      robots,
+      h1,
+      internalLinks,
+    }
+  } catch (error) {
+    console.error(`Failed to parse ${url}:`, error)
+    return null
+  }
+}
+
+// Generate suggestions for a page
+function generateSuggestions(
+  pageData: PageData,
+  pageId: string,
+  userId: string,
+  domainId: string,
+  baseOrigin: string
+): SuggestionInsert[] {
+  const suggestions: SuggestionInsert[] = []
+
+  // Check for missing or short title
+  if (!pageData.title || pageData.title.length < 10) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'missing_or_short_title',
+      title: 'Add a better page title',
+      description: pageData.title
+        ? `The title "${pageData.title}" is very short (${pageData.title.length} chars). Aim for 30-60 characters.`
+        : 'This page is missing a title tag. Add a descriptive title to improve SEO.',
+      severity: 'high',
+    })
+  } else if (pageData.title.length > 60) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'title_too_long',
+      title: 'Title tag is too long',
+      description: `The title is ${pageData.title.length} characters. Search engines typically display 50-60 characters.`,
+      severity: 'low',
+    })
+  }
+
+  // Check for missing meta description
+  if (!pageData.metaDescription) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'missing_meta_description',
+      title: 'Add a meta description',
+      description: 'This page has no meta description. Add one (150-160 characters) to improve click-through rate.',
+      severity: 'medium',
+    })
+  } else if (pageData.metaDescription.length < 50) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'short_meta_description',
+      title: 'Meta description is too short',
+      description: `Your meta description is only ${pageData.metaDescription.length} characters. Aim for 150-160 characters.`,
+      severity: 'low',
+    })
+  } else if (pageData.metaDescription.length > 160) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'long_meta_description',
+      title: 'Meta description is too long',
+      description: `Your meta description is ${pageData.metaDescription.length} characters. It may be truncated in search results.`,
+      severity: 'low',
+    })
+  }
+
+  // Check for canonical URL issues
+  if (pageData.canonical) {
+    try {
+      const canonicalUrl = new URL(pageData.canonical, pageData.url)
+      const pageUrl = new URL(pageData.url)
+
+      if (canonicalUrl.origin !== pageUrl.origin) {
+        suggestions.push({
+          user_id: userId,
+          domain_id: domainId,
+          page_id: pageId,
+          suggestion_type: 'canonical_points_elsewhere',
+          title: 'Canonical URL points to different domain',
+          description: `The canonical URL points to ${canonicalUrl.host}. Search engines may ignore this page.`,
+          severity: 'high',
+        })
+      }
+    } catch {
+      suggestions.push({
+        user_id: userId,
+        domain_id: domainId,
+        page_id: pageId,
+        suggestion_type: 'invalid_canonical',
+        title: 'Invalid canonical URL',
+        description: `The canonical URL "${pageData.canonical}" is malformed.`,
+        severity: 'medium',
+      })
+    }
+  }
+
+  // Check for missing H1
+  if (!pageData.h1) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'missing_h1',
+      title: 'Add an H1 heading',
+      description: 'This page has no H1 heading. Add one to improve SEO structure.',
+      severity: 'medium',
+    })
+  }
+
+  // Check for noindex directive
+  if (pageData.robots && pageData.robots.toLowerCase().includes('noindex')) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'noindex_set',
+      title: 'Page is set to noindex',
+      description: 'This page will not appear in search results. Remove noindex if you want it indexed.',
+      severity: 'high',
+    })
+  }
+
+  // Check for HTTP error status
+  if (pageData.httpStatus >= 400) {
+    suggestions.push({
+      user_id: userId,
+      domain_id: domainId,
+      page_id: pageId,
+      suggestion_type: 'page_error_status',
+      title: `Page returns ${pageData.httpStatus} error`,
+      description: `This page responded with HTTP ${pageData.httpStatus}. Fix the error to ensure accessibility.`,
+      severity: 'high',
+    })
+  }
+
+  return suggestions
+}
+
 serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -31,7 +262,7 @@ serve(async (req) => {
   }
 
   try {
-    const { domainId }: ScanRequest = await req.json()
+    const { domainId, maxPages = 50 }: ScanRequest = await req.json()
 
     if (!domainId) {
       return new Response(
@@ -40,13 +271,12 @@ serve(async (req) => {
       )
     }
 
-    // Initialize Supabase client with service role key
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // 1) Load domain + status to get final_url and user_id
+    // Load domain
     const { data: domainRow, error: domainError } = await supabaseClient
       .from('domains')
       .select('id, user_id, domain_name')
@@ -60,278 +290,126 @@ serve(async (req) => {
       )
     }
 
-    // Get the domain status for final_url
+    // Get domain status for final_url
     const { data: statusRow } = await supabaseClient
       .from('domain_status')
-      .select('final_url, final_status_code')
+      .select('final_url')
       .eq('domain_id', domainId)
       .maybeSingle()
 
-    // Determine URL to scan
-    let urlToScan = statusRow?.final_url
-    if (!urlToScan) {
-      // Fall back to domain name with https
-      urlToScan = domainRow.domain_name
-      if (!urlToScan.startsWith('http://') && !urlToScan.startsWith('https://')) {
-        urlToScan = `https://${urlToScan}`
+    let startUrl = statusRow?.final_url
+    if (!startUrl) {
+      startUrl = domainRow.domain_name
+      if (!startUrl.startsWith('http://') && !startUrl.startsWith('https://')) {
+        startUrl = `https://${startUrl}`
       }
     }
 
+    const baseOrigin = new URL(startUrl).origin
     const userId = domainRow.user_id
 
-    // 2) Fetch homepage HTML
-    let homeHtml: string
-    let homeStatus = 0
-    try {
-      const response = await fetch(urlToScan, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'SEOLens/1.0 (Page Scanner)',
-          'Accept': 'text/html,application/xhtml+xml',
-        },
-        redirect: 'follow',
-      })
-      homeStatus = response.status
-      homeHtml = await response.text()
-    } catch (fetchError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Failed to fetch homepage: ${fetchError.message}`,
-          domainId
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Crawl pages
+    const scannedUrls = new Set<string>()
+    const urlQueue: string[] = [startUrl]
+    const allPageData: { pageData: PageData; pageId: string }[] = []
+    const allSuggestions: SuggestionInsert[] = []
+    let pagesScanned = 0
 
-    // 3) Parse HTML with DOMParser
-    const doc = new DOMParser().parseFromString(homeHtml, 'text/html')
+    console.log(`Starting crawl of ${baseOrigin}, max ${maxPages} pages`)
 
-    const title = doc?.querySelector('title')?.textContent?.trim() ?? null
-    const metaDesc = doc?.querySelector('meta[name="description"]')?.getAttribute('content')?.trim() ?? null
-    const canonical = doc?.querySelector('link[rel="canonical"]')?.getAttribute('href')?.trim() ?? null
-    const robots = doc?.querySelector('meta[name="robots"]')?.getAttribute('content')?.trim() ?? null
-    const h1 = doc?.querySelector('h1')?.textContent?.trim() ?? null
+    while (urlQueue.length > 0 && pagesScanned < maxPages) {
+      const url = urlQueue.shift()!
 
-    // 4) Upsert homepage into site_pages
-    const { data: pageRow, error: upsertError } = await supabaseClient
-      .from('site_pages')
-      .upsert({
-        user_id: userId,
-        domain_id: domainId,
-        url: urlToScan,
-        http_status: homeStatus,
-        title,
-        meta_description: metaDesc,
-        canonical_url: canonical,
-        robots_directive: robots,
-        h1,
-        last_scanned_at: new Date().toISOString(),
-      }, {
-        onConflict: 'domain_id,url'
-      })
-      .select()
-      .maybeSingle()
+      // Normalize URL for deduplication
+      let normalizedUrl = url
+      if (normalizedUrl.endsWith('/') && normalizedUrl !== baseOrigin + '/') {
+        normalizedUrl = normalizedUrl.slice(0, -1)
+      }
 
-    if (upsertError) {
-      console.error('Upsert error:', upsertError)
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Failed to save page data: ${upsertError.message}`,
-          domainId
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+      if (scannedUrls.has(normalizedUrl)) continue
+      scannedUrls.add(normalizedUrl)
 
-    if (!pageRow) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Failed to retrieve page after upsert',
-          domainId
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+      console.log(`Scanning page ${pagesScanned + 1}/${maxPages}: ${normalizedUrl}`)
 
-    // 5) Generate suggestions based on SEO analysis
-    const suggestionsToInsert: SuggestionInsert[] = []
-    const suggestionTypes: string[] = []
+      const pageData = await parsePage(normalizedUrl, baseOrigin)
+      if (!pageData) continue
 
-    // Check for missing or short title
-    if (!title || title.length < 10) {
-      suggestionsToInsert.push({
-        user_id: userId,
-        domain_id: domainId,
-        page_id: pageRow.id,
-        suggestion_type: 'missing_or_short_title',
-        title: 'Add a better page title',
-        description: title
-          ? `The homepage title "${title}" is very short (${title.length} chars). Consider writing a clear, descriptive title between 30-60 characters.`
-          : 'The homepage is missing a title tag. Add a descriptive title to improve SEO.',
-        severity: 'high',
-      })
-      suggestionTypes.push('missing_or_short_title')
-    }
+      pagesScanned++
 
-    // Check for missing meta description
-    if (!metaDesc) {
-      suggestionsToInsert.push({
-        user_id: userId,
-        domain_id: domainId,
-        page_id: pageRow.id,
-        suggestion_type: 'missing_meta_description',
-        title: 'Add a meta description',
-        description: 'This page has no meta description. Add one (150-160 characters) to improve click-through rate from search results.',
-        severity: 'medium',
-      })
-      suggestionTypes.push('missing_meta_description')
-    } else if (metaDesc.length < 50) {
-      suggestionsToInsert.push({
-        user_id: userId,
-        domain_id: domainId,
-        page_id: pageRow.id,
-        suggestion_type: 'short_meta_description',
-        title: 'Meta description is too short',
-        description: `Your meta description is only ${metaDesc.length} characters. Aim for 150-160 characters for optimal display in search results.`,
-        severity: 'low',
-      })
-      suggestionTypes.push('short_meta_description')
-    }
-
-    // Check for canonical URL issues
-    if (canonical) {
-      try {
-        const canonicalUrl = new URL(canonical, urlToScan)
-        const pageUrl = new URL(urlToScan)
-
-        if (canonicalUrl.host !== pageUrl.host) {
-          suggestionsToInsert.push({
-            user_id: userId,
-            domain_id: domainId,
-            page_id: pageRow.id,
-            suggestion_type: 'canonical_points_elsewhere',
-            title: 'Canonical URL points to a different domain',
-            description: `The canonical URL points to ${canonicalUrl.host}, which may cause search engines to ignore this page in favor of the canonical target.`,
-            severity: 'high',
-          })
-          suggestionTypes.push('canonical_points_elsewhere')
-        }
-      } catch {
-        // Invalid canonical URL
-        suggestionsToInsert.push({
+      // Upsert page into database
+      const { data: pageRow, error: upsertError } = await supabaseClient
+        .from('site_pages')
+        .upsert({
           user_id: userId,
           domain_id: domainId,
-          page_id: pageRow.id,
-          suggestion_type: 'invalid_canonical',
-          title: 'Invalid canonical URL',
-          description: `The canonical URL "${canonical}" appears to be malformed. Fix this to ensure proper indexing.`,
-          severity: 'medium',
+          url: normalizedUrl,
+          http_status: pageData.httpStatus,
+          title: pageData.title,
+          meta_description: pageData.metaDescription,
+          canonical_url: pageData.canonical,
+          robots_directive: pageData.robots,
+          h1: pageData.h1,
+          last_scanned_at: new Date().toISOString(),
+        }, {
+          onConflict: 'domain_id,url'
         })
-        suggestionTypes.push('invalid_canonical')
+        .select()
+        .maybeSingle()
+
+      if (upsertError || !pageRow) {
+        console.error(`Failed to upsert page ${normalizedUrl}:`, upsertError)
+        continue
+      }
+
+      allPageData.push({ pageData, pageId: pageRow.id })
+
+      // Generate suggestions for this page
+      const pageSuggestions = generateSuggestions(pageData, pageRow.id, userId, domainId, baseOrigin)
+      allSuggestions.push(...pageSuggestions)
+
+      // Add new internal links to queue
+      for (const link of pageData.internalLinks) {
+        let normalizedLink = link
+        if (normalizedLink.endsWith('/') && normalizedLink !== baseOrigin + '/') {
+          normalizedLink = normalizedLink.slice(0, -1)
+        }
+        if (!scannedUrls.has(normalizedLink) && !urlQueue.includes(normalizedLink)) {
+          urlQueue.push(normalizedLink)
+        }
       }
     }
 
-    // Check for missing H1
-    if (!h1) {
-      suggestionsToInsert.push({
-        user_id: userId,
-        domain_id: domainId,
-        page_id: pageRow.id,
-        suggestion_type: 'missing_h1',
-        title: 'Add an H1 heading',
-        description: 'This page has no H1 heading. Add a single, descriptive H1 tag to improve SEO structure.',
-        severity: 'medium',
-      })
-      suggestionTypes.push('missing_h1')
-    }
+    // Clear old suggestions for scanned pages and insert new ones
+    const scannedPageIds = allPageData.map(p => p.pageId)
 
-    // Check for noindex directive
-    if (robots && robots.toLowerCase().includes('noindex')) {
-      suggestionsToInsert.push({
-        user_id: userId,
-        domain_id: domainId,
-        page_id: pageRow.id,
-        suggestion_type: 'noindex_set',
-        title: 'Page is set to noindex',
-        description: 'This page has a noindex robots directive, meaning it will not appear in search results. Remove this if you want the page indexed.',
-        severity: 'high',
-      })
-      suggestionTypes.push('noindex_set')
-    }
-
-    // Check for HTTP error status
-    if (homeStatus >= 400) {
-      suggestionsToInsert.push({
-        user_id: userId,
-        domain_id: domainId,
-        page_id: pageRow.id,
-        suggestion_type: 'homepage_error_status',
-        title: 'Homepage returns an error status',
-        description: `The homepage responded with HTTP status ${homeStatus}. Fix this error to ensure users and search engines can access your site.`,
-        severity: 'high',
-      })
-      suggestionTypes.push('homepage_error_status')
-    }
-
-    // 6) Clear old suggestions for these types on this page, then insert new ones
-    if (suggestionTypes.length > 0) {
-      // Delete old suggestions of these types for this page
+    if (scannedPageIds.length > 0) {
+      // Delete old suggestions for these pages
       await supabaseClient
         .from('suggestions')
         .delete()
-        .eq('page_id', pageRow.id)
-        .in('suggestion_type', suggestionTypes)
-    }
+        .in('page_id', scannedPageIds)
 
-    // Also clear suggestion types we checked but didn't find issues for
-    // This ensures old suggestions are removed when issues are fixed
-    const allCheckedTypes = [
-      'missing_or_short_title',
-      'missing_meta_description',
-      'short_meta_description',
-      'canonical_points_elsewhere',
-      'invalid_canonical',
-      'missing_h1',
-      'noindex_set',
-      'homepage_error_status'
-    ]
-    const typesWithNoIssues = allCheckedTypes.filter(t => !suggestionTypes.includes(t))
+      // Insert new suggestions
+      if (allSuggestions.length > 0) {
+        const { error: insertError } = await supabaseClient
+          .from('suggestions')
+          .insert(allSuggestions)
 
-    if (typesWithNoIssues.length > 0) {
-      await supabaseClient
-        .from('suggestions')
-        .delete()
-        .eq('page_id', pageRow.id)
-        .in('suggestion_type', typesWithNoIssues)
-    }
-
-    // Insert new suggestions
-    if (suggestionsToInsert.length > 0) {
-      const { error: insertError } = await supabaseClient
-        .from('suggestions')
-        .insert(suggestionsToInsert)
-
-      if (insertError) {
-        console.error('Error inserting suggestions:', insertError)
+        if (insertError) {
+          console.error('Error inserting suggestions:', insertError)
+        }
       }
     }
+
+    console.log(`Crawl complete: ${pagesScanned} pages, ${allSuggestions.length} suggestions`)
 
     return new Response(
       JSON.stringify({
         success: true,
         domainId,
-        pageId: pageRow.id,
-        url: urlToScan,
-        httpStatus: homeStatus,
-        title,
-        metaDescription: metaDesc,
-        canonical,
-        robots,
-        h1,
-        suggestionsCreated: suggestionsToInsert.length,
+        pagesScanned,
+        suggestionsCreated: allSuggestions.length,
+        urlsFound: scannedUrls.size + urlQueue.length,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

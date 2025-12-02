@@ -38,19 +38,20 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
               SizedBox(width: 12),
-              Text('Scanning domain and pages...'),
+              Expanded(child: Text('Crawling site (up to 50 pages)...')),
             ],
           ),
-          duration: Duration(seconds: 5),
+          duration: Duration(seconds: 60),
         ),
       );
     }
 
     try {
-      // Run full scan (domain status + page SEO analysis)
-      await ref.read(scanServiceProvider).fullScan(
+      // Run full scan (domain status + page crawl)
+      final result = await ref.read(scanServiceProvider).fullScan(
             domainId: domain.id,
             domainName: domain.domainName,
+            maxPages: 50,
           );
 
       // Invalidate all related providers to refresh data
@@ -61,16 +62,20 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text('Scan completed successfully'),
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Scanned ${result.pagesScanned} pages, found ${result.suggestionsCreated} issues',
+                  ),
+                ),
               ],
             ),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
