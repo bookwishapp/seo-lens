@@ -1,25 +1,17 @@
 import Image from 'next/image'
 import Link from 'next/link'
 
-// Placeholder Logo component
+// Logo component
 function Logo() {
   return (
     <div className="flex items-center gap-2">
-      <svg
-        width="32"
-        height="32"
-        viewBox="0 0 32 32"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="text-primary"
-        aria-hidden="true"
-      >
-        <circle cx="16" cy="16" r="16" fill="currentColor" opacity="0.1" />
-        <path
-          d="M16 8L8 12V20L16 24L24 20V12L16 8Z"
-          fill="currentColor"
-        />
-      </svg>
+      <img
+        src="/seo_lens_logo.svg"
+        alt="SEO Lens Logo"
+        width={32}
+        height={32}
+        className="flex-shrink-0"
+      />
       <span className="text-xl font-bold text-gray-900">SEO Lens</span>
     </div>
   )
