@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 // Brand color from landing page
 const Color _primaryBlue = Color(0xFF5F9DF7);
@@ -45,24 +46,15 @@ class _MobileLayout extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SvgPicture.asset(
-              'assets/seo_lens_logo.svg',
-              width: 32,
-              height: 32,
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'SEO Lens',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ],
+        title: Text(
+          'SEO Lens',
+          style: GoogleFonts.inter(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
+        centerTitle: false,
         backgroundColor: _primaryBlue,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -137,24 +129,15 @@ class _DesktopLayout extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SvgPicture.asset(
-              'assets/seo_lens_logo.svg',
-              width: 32,
-              height: 32,
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'SEO Lens',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ],
+        title: Text(
+          'SEO Lens',
+          style: GoogleFonts.inter(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
+        centerTitle: false,
         backgroundColor: _primaryBlue,
         foregroundColor: Colors.white,
         elevation: 0,
