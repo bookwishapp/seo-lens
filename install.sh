@@ -5,7 +5,11 @@ set -e
 PROJECT_ROOT=$(pwd)
 FLUTTER_SDK="$PROJECT_ROOT/../flutter"
 
-# Install Next.js dependencies
+# Install root dependencies (for Vercel framework detection)
+cd "$PROJECT_ROOT"
+npm install
+
+# Install Next.js app dependencies
 cd "$PROJECT_ROOT/apps/web"
 npm install
 
