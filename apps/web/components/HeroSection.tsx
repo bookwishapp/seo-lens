@@ -115,7 +115,7 @@ export function HeroSection() {
                   />
                 </svg>
                 <span className="text-gray-700 text-base sm:text-lg">
-                  <strong>PLUS:</strong> Never miss another domain expiration date again!
+                  <strong>PLUS:</strong> Get reminded before your domains expire, so nothing quietly disappears.
                 </span>
               </li>
             </ul>
