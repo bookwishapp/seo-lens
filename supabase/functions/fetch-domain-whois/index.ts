@@ -198,9 +198,9 @@ serve(async (req) => {
 
     } catch (rdapError) {
       console.error('RDAP fetch error:', rdapError)
-      status = 'error'
+      status = 'not_found'
 
-      // Return error response but don't update database
+      // Return not_found status with user-friendly message (don't fail the request)
       return new Response(
         JSON.stringify({
           domain_id,
@@ -208,8 +208,8 @@ serve(async (req) => {
           expiry_date: null,
           registrar_name: null,
           source: 'rdap',
-          status: 'error',
-          message: rdapError instanceof Error ? rdapError.message : 'RDAP lookup failed'
+          status: 'not_found',
+          message: 'WHOIS data not available via automatic lookup. You can add this info manually using the Edit button above.'
         } as WhoisResponse),
         {
           status: 200, // Return 200 so client can handle gracefully
@@ -250,7 +250,16 @@ serve(async (req) => {
       }
     }
 
-    // Return success response
+    // Return success response with appropriate message
+    let message: string | undefined
+    if (status === 'ok') {
+      message = 'WHOIS data updated successfully'
+    } else if (status === 'partial') {
+      message = 'Some WHOIS data was found. You can manually add any missing details using the Edit button.'
+    } else if (status === 'not_found') {
+      message = 'WHOIS data not available via automatic lookup. You can add this info manually using the Edit button above.'
+    }
+
     return new Response(
       JSON.stringify({
         domain_id,
@@ -258,7 +267,8 @@ serve(async (req) => {
         expiry_date: expiryDate,
         registrar_name: registrarName,
         source: 'rdap',
-        status
+        status,
+        message
       } as WhoisResponse),
       {
         status: 200,

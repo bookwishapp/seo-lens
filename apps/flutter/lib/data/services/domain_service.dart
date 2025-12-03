@@ -165,23 +165,18 @@ class DomainService {
       final data = response.data as Map<String, dynamic>;
       final status = data['status'] as String?;
 
-      if (status == 'error') {
-        return WhoisResult(
-          success: false,
-          message: data['message'] as String? ?? 'WHOIS lookup failed',
-        );
-      }
+      // All status codes except 'error' are considered success
+      // because they represent valid responses (ok, partial, not_found)
+      final isSuccess = status != 'error';
 
       return WhoisResult(
-        success: true,
+        success: isSuccess,
         expiryDate: data['expiry_date'] != null
             ? DateTime.parse(data['expiry_date'] as String)
             : null,
         registrarName: data['registrar_name'] as String?,
         status: status,
-        message: status == 'partial'
-            ? 'Some WHOIS data was not available'
-            : 'WHOIS data updated',
+        message: data['message'] as String? ?? 'WHOIS lookup complete',
       );
     } catch (e) {
       return WhoisResult(

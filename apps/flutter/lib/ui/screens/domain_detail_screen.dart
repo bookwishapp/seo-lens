@@ -190,10 +190,23 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                     .read(domainServiceProvider)
                     .fetchWhoisData(widget.domainId);
                 if (mounted) {
+                  // Determine color based on status
+                  Color backgroundColor;
+                  if (!result.success) {
+                    backgroundColor = Colors.red;
+                  } else if (result.status == 'ok') {
+                    backgroundColor = Colors.green;
+                  } else if (result.status == 'partial' || result.status == 'not_found') {
+                    backgroundColor = Colors.blue;
+                  } else {
+                    backgroundColor = Colors.grey;
+                  }
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(result.message ?? 'WHOIS lookup complete'),
-                      backgroundColor: result.success ? Colors.green : Colors.red,
+                      backgroundColor: backgroundColor,
+                      duration: const Duration(seconds: 4),
                     ),
                   );
                 }
