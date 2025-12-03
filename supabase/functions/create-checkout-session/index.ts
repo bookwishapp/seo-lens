@@ -45,9 +45,13 @@ serve(async (req: Request): Promise<Response> => {
     // Get environment variables
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')
     const frontendUrl = Deno.env.get('FRONTEND_URL')
-    const priceProMonthly = Deno.env.get('STRIPE_PRICE_PRO_MONTHLY')
-    const priceProYearly = Deno.env.get('STRIPE_PRICE_PRO_YEARLY')
-    const priceLifetime = Deno.env.get('STRIPE_PRICE_LIFETIME')
+
+    // Valid price IDs (hardcoded for reliability)
+    const VALID_PRICES = {
+      'price_1SaICB5qHmqMYJiA1Ab3X3Mh': { mode: 'subscription', interval: 'monthly' },
+      'price_1SaIDG5qHmqMYJiAVT6WH0ER': { mode: 'subscription', interval: 'yearly' },
+      'price_1SaIEI5qHmqMYJiAKdIZb4iy': { mode: 'payment', interval: 'lifetime' },
+    }
 
     if (!stripeSecretKey) {
       console.error('STRIPE_SECRET_KEY not configured')
@@ -97,17 +101,8 @@ serve(async (req: Request): Promise<Response> => {
     const { price_id, mode, interval, success_url, cancel_url } = body
 
     // Validate the price_id and mode combination
-    const validCombinations = [
-      { priceId: priceProMonthly, mode: 'subscription', interval: 'monthly' },
-      { priceId: priceProYearly, mode: 'subscription', interval: 'yearly' },
-      { priceId: priceLifetime, mode: 'payment', interval: 'lifetime' },
-    ]
-
-    const isValidRequest = validCombinations.some(
-      combo => combo.priceId === price_id && combo.mode === mode && combo.interval === interval
-    )
-
-    if (!isValidRequest) {
+    const validPrice = VALID_PRICES[price_id as keyof typeof VALID_PRICES]
+    if (!validPrice || validPrice.mode !== mode || validPrice.interval !== interval) {
       console.error('Invalid checkout request:', { price_id, mode, interval })
       return new Response(
         JSON.stringify({ error: 'Invalid price, mode, or interval combination' } as ErrorResponse),
