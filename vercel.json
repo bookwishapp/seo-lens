@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd apps/web && npm run build && cd ../flutter && ../../flutter/bin/flutter build web --release --base-href=/app/ --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY && mkdir -p ../web/public/app && cp -r build/web/* ../web/public/app/",
+  "buildCommand": "./build.sh",
   "outputDirectory": "apps/web/.next",
   "installCommand": "cd apps/web && npm install && if cd ../../flutter; then git pull && cd ../seo_lens; else git clone https://github.com/flutter/flutter.git ../flutter; fi && ../flutter/bin/flutter doctor && cd apps/flutter && ../../flutter/bin/flutter pub get",
   "framework": "nextjs"
