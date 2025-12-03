@@ -16,6 +16,7 @@ import '../ui/widgets/app_shell.dart';
 /// Router configuration for the app
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
+  final pendingUpgradePlan = ref.watch(pendingUpgradePlanProvider);
 
   return GoRouter(
     initialLocation: '/auth',
@@ -29,8 +30,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = state.matchedLocation == '/auth';
       final isUpgradeRoute = state.matchedLocation == '/upgrade';
 
-      // Check for upgrade param (on /auth) or plan param (on /upgrade)
-      final upgradeParam = state.uri.queryParameters['upgrade'];
+      // Check for upgrade param: provider first (persists), then URL
+      final upgradeParam = pendingUpgradePlan ?? state.uri.queryParameters['upgrade'];
       final planParam = state.uri.queryParameters['plan'];
 
       // Not authenticated and trying to access protected route

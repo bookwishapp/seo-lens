@@ -22,6 +22,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    // Store upgrade parameter in provider so it persists across navigation
+    final upgradeParam = GoRouterState.of(context).uri.queryParameters['upgrade'];
+    if (upgradeParam != null) {
+      Future.microtask(() {
+        ref.read(pendingUpgradePlanProvider.notifier).state = upgradeParam;
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();

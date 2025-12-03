@@ -153,6 +153,9 @@ final suggestionCountsProvider =
 // UI STATE PROVIDERS
 // ============================================================================
 
+/// Pending upgrade plan (persists across navigation during auth flow)
+final pendingUpgradePlanProvider = StateProvider<String?>((ref) => null);
+
 /// Search query for domains
 final domainSearchQueryProvider = StateProvider<String>((ref) => '');
 
