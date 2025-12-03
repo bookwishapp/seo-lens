@@ -72,26 +72,25 @@ serve(async (req: Request): Promise<Response> => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Get the authorization header to identify the user
+    // Get the authorization header (optional for guest checkout)
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' } as ErrorResponse),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    let user = null
+    let isAuthenticated = false
+
+    if (authHeader) {
+      // Authenticated user (upgrade from settings)
+      const token = authHeader.replace('Bearer ', '')
+      const { data: authData, error: authError } = await supabaseClient.auth.getUser(token)
+
+      if (!authError && authData.user) {
+        user = authData.user
+        isAuthenticated = true
+        console.log('Authenticated checkout for user:', user.id)
+      }
     }
 
-    // Verify the JWT and get the user
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-
-    if (authError || !user) {
-      console.error('Auth error:', authError)
-      return new Response(
-        JSON.stringify({ error: 'Invalid or expired token' } as ErrorResponse),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // For guest checkout (no auth), we'll create a session without customer ID
+    // and the webhook will handle user creation
 
     // Parse the request body
     const body: CheckoutRequest = await req.json()
@@ -116,47 +115,39 @@ serve(async (req: Request): Promise<Response> => {
       )
     }
 
-    // Get or create the user's profile to retrieve/store Stripe customer ID
-    const { data: profile, error: profileError } = await supabaseClient
-      .from('profiles')
-      .select('id, stripe_customer_id')
-      .eq('id', user.id)
-      .single()
+    let stripeCustomerId: string | undefined = undefined
 
-    if (profileError && profileError.code !== 'PGRST116') {
-      console.error('Profile fetch error:', profileError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch user profile' } as ErrorResponse),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    let stripeCustomerId = profile?.stripe_customer_id
-
-    // Create Stripe customer if one doesn't exist
-    if (!stripeCustomerId) {
-      console.log('Creating new Stripe customer for user:', user.id)
-
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: {
-          supabase_user_id: user.id,
-        },
-      })
-
-      stripeCustomerId = customer.id
-
-      // Save the Stripe customer ID to the profile
-      const { error: updateError } = await supabaseClient
+    // For authenticated users, get or create Stripe customer
+    if (isAuthenticated && user) {
+      const { data: profile } = await supabaseClient
         .from('profiles')
-        .update({ stripe_customer_id: stripeCustomerId })
+        .select('id, stripe_customer_id')
         .eq('id', user.id)
+        .single()
 
-      if (updateError) {
-        console.error('Failed to save Stripe customer ID:', updateError)
-        // Continue anyway - the customer was created in Stripe
+      stripeCustomerId = profile?.stripe_customer_id
+
+      // Create Stripe customer if one doesn't exist
+      if (!stripeCustomerId) {
+        console.log('Creating new Stripe customer for user:', user.id)
+
+        const customer = await stripe.customers.create({
+          email: user.email,
+          metadata: {
+            supabase_user_id: user.id,
+          },
+        })
+
+        stripeCustomerId = customer.id
+
+        // Save the Stripe customer ID to the profile
+        await supabaseClient
+          .from('profiles')
+          .update({ stripe_customer_id: stripeCustomerId })
+          .eq('id', user.id)
       }
     }
+    // For guest checkout, don't create customer - Stripe will handle it
 
     // Build success and cancel URLs
     // The success URL includes a session_id placeholder that Stripe will replace
@@ -183,7 +174,6 @@ serve(async (req: Request): Promise<Response> => {
 
     // Create the Checkout Session
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
-      customer: stripeCustomerId,
       mode: mode,
       line_items: [
         {
@@ -194,18 +184,28 @@ serve(async (req: Request): Promise<Response> => {
       success_url: finalSuccessUrl,
       cancel_url: finalCancelUrl,
       metadata: {
-        supabase_user_id: user.id,
         interval: interval,
       },
     }
 
-    // For subscriptions, add subscription metadata too
+    // Add customer for authenticated users, let Stripe collect email for guests
+    if (stripeCustomerId) {
+      sessionParams.customer = stripeCustomerId
+      sessionParams.metadata!.supabase_user_id = user!.id
+    } else {
+      // Guest checkout - Stripe will collect email
+      sessionParams.customer_email = undefined // Let Stripe ask for email
+    }
+
+    // For subscriptions, add subscription metadata
     if (mode === 'subscription') {
       sessionParams.subscription_data = {
         metadata: {
-          supabase_user_id: user.id,
           interval: interval,
         },
+      }
+      if (isAuthenticated && user) {
+        sessionParams.subscription_data.metadata.supabase_user_id = user.id
       }
     }
 
@@ -213,13 +213,16 @@ serve(async (req: Request): Promise<Response> => {
     if (mode === 'payment') {
       sessionParams.payment_intent_data = {
         metadata: {
-          supabase_user_id: user.id,
           interval: interval,
         },
       }
+      if (isAuthenticated && user) {
+        sessionParams.payment_intent_data.metadata.supabase_user_id = user.id
+      }
     }
 
-    console.log('Creating Checkout session for user:', user.id, 'mode:', mode, 'interval:', interval)
+    const userInfo = isAuthenticated && user ? user.id : 'guest'
+    console.log('Creating Checkout session for:', userInfo, 'mode:', mode, 'interval:', interval)
 
     const session = await stripe.checkout.sessions.create(sessionParams)
 

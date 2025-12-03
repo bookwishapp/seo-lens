@@ -133,12 +133,46 @@ async function handleCheckoutCompleted(
   console.log('Processing checkout.session.completed:', session.id)
 
   // Get the Supabase user ID from session metadata
-  const supabaseUserId = session.metadata?.supabase_user_id
+  let supabaseUserId = session.metadata?.supabase_user_id
   const interval = session.metadata?.interval // 'monthly', 'yearly', or 'lifetime'
 
+  // If no user ID in metadata, this is a guest checkout (payment-first flow)
+  // We need to create or find the user by email
   if (!supabaseUserId) {
-    console.error('No supabase_user_id in session metadata')
-    return
+    console.log('Guest checkout detected, creating/finding user by email')
+
+    const customerEmail = session.customer_details?.email || session.customer_email
+    if (!customerEmail) {
+      console.error('No email found in checkout session')
+      return
+    }
+
+    // Check if user exists with this email
+    const { data: existingUser } = await supabase.auth.admin.listUsers()
+    const userWithEmail = existingUser?.users?.find(u => u.email === customerEmail)
+
+    if (userWithEmail) {
+      console.log('Found existing user with email:', customerEmail)
+      supabaseUserId = userWithEmail.id
+    } else {
+      // Create new user with random password (they'll use magic link to log in)
+      console.log('Creating new user with email:', customerEmail)
+      const randomPassword = crypto.randomUUID()
+
+      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+        email: customerEmail,
+        password: randomPassword,
+        email_confirm: true, // Auto-confirm email since they paid
+      })
+
+      if (createError || !newUser.user) {
+        console.error('Failed to create user:', createError)
+        return
+      }
+
+      supabaseUserId = newUser.user.id
+      console.log('Created new user:', supabaseUserId)
+    }
   }
 
   const stripeCustomerId = typeof session.customer === 'string'

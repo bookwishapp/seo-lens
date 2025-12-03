@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/providers.dart';
+import '../../supabase_config.dart';
 
 /// Screen shown after successful Stripe checkout
 class CheckoutSuccessScreen extends ConsumerStatefulWidget {
@@ -14,16 +15,67 @@ class CheckoutSuccessScreen extends ConsumerStatefulWidget {
 class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
   bool _isNewUser = false;
   bool _isChecking = true;
+  bool _magicLinkSent = false;
+  String? _userEmail;
 
   @override
   void initState() {
     super.initState();
     Future.delayed(Duration.zero, () {
-      // Clear pending upgrade plan now that checkout succeeded
       ref.read(pendingUpgradePlanProvider.notifier).state = null;
-      ref.invalidate(currentProfileProvider);
-      _checkOnboardingStatus();
+      _handleCheckoutSuccess();
     });
+  }
+
+  Future<void> _handleCheckoutSuccess() async {
+    final user = ref.read(currentUserProvider);
+
+    if (user == null) {
+      // Guest checkout - user not authenticated yet
+      // Send magic link so they can log in
+      await _sendMagicLink();
+    } else {
+      // Authenticated user - check if they need onboarding
+      ref.invalidate(currentProfileProvider);
+      await _checkOnboardingStatus();
+    }
+  }
+
+  Future<void> _sendMagicLink() async {
+    try {
+      // Get session_id from URL
+      final sessionId = Uri.base.queryParameters['session_id'];
+
+      if (sessionId == null) {
+        setState(() {
+          _isChecking = false;
+        });
+        return;
+      }
+
+      // Call edge function to send magic link
+      final response = await supabase.functions.invoke(
+        'send-checkout-magic-link',
+        body: {'session_id': sessionId},
+      );
+
+      if (response.status == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        setState(() {
+          _magicLinkSent = true;
+          _userEmail = data['email'] as String?;
+          _isChecking = false;
+        });
+      } else {
+        setState(() {
+          _isChecking = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isChecking = false;
+      });
+    }
   }
 
   Future<void> _checkOnboardingStatus() async {
@@ -37,7 +89,6 @@ class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
           _isNewUser = true;
           _isChecking = false;
         });
-        // Auto-redirect new users to onboarding after showing success briefly
         await Future.delayed(const Duration(seconds: 2));
         if (mounted) {
           context.go('/onboarding');
@@ -72,13 +123,15 @@ class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Welcome to Pro!',
+                  _magicLinkSent ? 'Check Your Email!' : 'Welcome to Pro!',
                   style: Theme.of(context).textTheme.headlineMedium,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Your payment was successful. Your account has been upgraded and you now have access to all Pro features!',
+                  _magicLinkSent
+                      ? 'Your payment was successful! We\'ve sent a magic link to ${_userEmail ?? "your email"}. Click the link to log in and start using SEO Lens.'
+                      : 'Your payment was successful. Your account has been upgraded and you now have access to all Pro features!',
                   style: Theme.of(context).textTheme.bodyLarge,
                   textAlign: TextAlign.center,
                 ),
