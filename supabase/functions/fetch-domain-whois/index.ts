@@ -91,25 +91,46 @@ serve(async (req) => {
     let status: 'ok' | 'partial' | 'not_found' | 'error' = 'not_found'
 
     try {
-      // Use rdap-bootstrap.arin.net which reliably routes to the appropriate RDAP server
-      const rdapUrl = `https://rdap-bootstrap.arin.net/bootstrap/domain/${domainName}`
+      // Try multiple RDAP services with fallbacks
+      const rdapUrls = [
+        `https://rdap.org/domain/${domainName}`,
+        `https://rdap-client.org/domain/${domainName}`,
+      ]
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+      let rdapResponse: Response | null = null
+      let lastError: string = ''
 
-      const rdapResponse = await fetch(rdapUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/rdap+json, application/json',
-          'User-Agent': 'SEOLens/1.0 (WHOIS Lookup)',
-        },
-        signal: controller.signal,
-      })
+      // Try each RDAP service until one succeeds
+      for (const rdapUrl of rdapUrls) {
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout per attempt
 
-      clearTimeout(timeoutId)
+          const response = await fetch(rdapUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/rdap+json, application/json',
+              'User-Agent': 'SEOLens/1.0 (WHOIS Lookup)',
+            },
+            signal: controller.signal,
+          })
 
-      if (!rdapResponse.ok) {
-        throw new Error(`RDAP request failed with status ${rdapResponse.status}: ${rdapResponse.statusText}`)
+          clearTimeout(timeoutId)
+
+          if (response.ok) {
+            rdapResponse = response
+            break
+          } else {
+            lastError = `${rdapUrl}: ${response.status} ${response.statusText}`
+          }
+        } catch (err) {
+          lastError = `${rdapUrl}: ${err instanceof Error ? err.message : 'Unknown error'}`
+          continue
+        }
+      }
+
+      if (!rdapResponse || !rdapResponse.ok) {
+        throw new Error(`All RDAP services failed. Last error: ${lastError}`)
       }
 
       const rdapData = await rdapResponse.json()
