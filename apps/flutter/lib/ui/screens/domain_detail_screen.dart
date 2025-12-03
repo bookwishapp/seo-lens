@@ -4,11 +4,12 @@ import 'package:intl/intl.dart';
 import '../../data/models/domain.dart';
 import '../../data/models/domain_status.dart';
 import '../../data/models/site_page.dart';
+import '../../data/models/suggestion.dart';
 import '../../data/plan_limits.dart';
 import '../../data/providers.dart';
 import '../../data/services/billing_service.dart';
 
-/// Domain detail screen
+/// Domain detail screen with lens-based tabbed layout
 class DomainDetailScreen extends ConsumerStatefulWidget {
   final String domainId;
 
@@ -21,8 +22,22 @@ class DomainDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<DomainDetailScreen> createState() => _DomainDetailScreenState();
 }
 
-class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
+class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   bool _isScanning = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<void> _scanDomain({int maxPages = 50}) async {
     final domain = await ref.read(domainProvider(widget.domainId).future);
@@ -56,7 +71,6 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
     }
 
     try {
-      // Run full scan (domain status + page crawl)
       final result = await ref.read(scanServiceProvider).fullScan(
             domainId: domain.id,
             domainName: domain.domainName,
@@ -64,10 +78,12 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
           );
 
       // Invalidate all related providers to refresh data
+      ref.invalidate(domainProvider(widget.domainId));
       ref.invalidate(domainStatusProvider(widget.domainId));
       ref.invalidate(sitePagesProvider(widget.domainId));
       ref.invalidate(suggestionsProvider);
       ref.invalidate(suggestionCountsProvider);
+      ref.invalidate(domainSuggestionsProvider(widget.domainId));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,6 +131,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
     final domainAsync = ref.watch(domainProvider(widget.domainId));
     final statusAsync = ref.watch(domainStatusProvider(widget.domainId));
     final pagesAsync = ref.watch(sitePagesProvider(widget.domainId));
+    final suggestionsAsync = ref.watch(domainSuggestionsProvider(widget.domainId));
 
     return Scaffold(
       appBar: AppBar(
@@ -168,6 +185,15 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
               ],
             ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Overview', icon: Icon(Icons.dashboard_outlined)),
+            Tab(text: 'Essentials', icon: Icon(Icons.checklist)),
+            Tab(text: 'Redirects', icon: Icon(Icons.alt_route)),
+            Tab(text: 'Expiry', icon: Icon(Icons.event)),
+          ],
+        ),
       ),
       body: domainAsync.when(
         data: (domain) {
@@ -175,116 +201,96 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
             return const Center(child: Text('Domain not found'));
           }
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktop = constraints.maxWidth >= 900;
+          // Get plan tier for WHOIS access
+          final profileAsync = ref.watch(currentProfileProvider);
+          final planTier = profileAsync.maybeWhen(
+            data: (profile) => profile?.planTier ?? 'free',
+            orElse: () => 'free',
+          );
+          final whoisEnabled = canUseWhois(planTier);
 
-              // Shared callbacks for both layouts
-              Future<void> onNotesUpdated(String notes) async {
-                await ref
-                    .read(domainServiceProvider)
-                    .updateDomain(domainId: widget.domainId, notes: notes);
-                ref.invalidate(domainProvider(widget.domainId));
-              }
-
-              Future<void> onWhoisFetch() async {
-                final result = await ref
-                    .read(domainServiceProvider)
-                    .fetchWhoisData(widget.domainId);
-                if (mounted) {
-                  // Determine color based on status
-                  Color backgroundColor;
-                  if (!result.success) {
-                    backgroundColor = Colors.red;
-                  } else if (result.status == 'ok') {
-                    backgroundColor = Colors.green;
-                  } else if (result.status == 'partial' || result.status == 'not_found') {
-                    backgroundColor = Colors.blue;
-                  } else {
-                    backgroundColor = Colors.grey;
+          return TabBarView(
+            controller: _tabController,
+            children: [
+              // Overview Lens
+              _OverviewLens(
+                domain: domain,
+                suggestionsAsync: suggestionsAsync,
+                onRescan: () => _scanDomain(maxPages: 10),
+              ),
+              // Essentials Lens
+              _EssentialsLens(
+                domain: domain,
+                pagesAsync: pagesAsync,
+              ),
+              // Redirects Lens
+              _RedirectsLens(
+                domain: domain,
+                statusAsync: statusAsync,
+                onRescan: () => _scanDomain(maxPages: 10),
+                onRedirectPlanUpdate: (url, provider) async {
+                  await ref.read(domainServiceProvider).updateRedirectPreferences(
+                        domainId: widget.domainId,
+                        preferredUrl: url,
+                        preferredRedirectProvider: provider,
+                      );
+                  ref.invalidate(domainProvider(widget.domainId));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Redirect plan saved'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
                   }
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(result.message ?? 'WHOIS lookup complete'),
-                      backgroundColor: backgroundColor,
-                      duration: const Duration(seconds: 4),
-                    ),
-                  );
-                }
-                ref.invalidate(domainProvider(widget.domainId));
-              }
-
-              Future<void> onDomainInfoUpdate(String? registrar, DateTime? expiry) async {
-                await ref.read(domainServiceProvider).updateDomainInfo(
-                      domainId: widget.domainId,
-                      registrarName: registrar,
-                      expiryDate: expiry,
+                },
+              ),
+              // Expiry Lens
+              _ExpiryLens(
+                domain: domain,
+                whoisEnabled: whoisEnabled,
+                onWhoisFetch: () async {
+                  final result = await ref
+                      .read(domainServiceProvider)
+                      .fetchWhoisData(widget.domainId);
+                  if (mounted) {
+                    Color backgroundColor;
+                    if (!result.success) {
+                      backgroundColor = Colors.red;
+                    } else if (result.status == 'ok') {
+                      backgroundColor = Colors.green;
+                    } else if (result.status == 'partial' || result.status == 'not_found') {
+                      backgroundColor = Colors.blue;
+                    } else {
+                      backgroundColor = Colors.grey;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result.message ?? 'WHOIS lookup complete'),
+                        backgroundColor: backgroundColor,
+                        duration: const Duration(seconds: 4),
+                      ),
                     );
-                ref.invalidate(domainProvider(widget.domainId));
-              }
-
-              Future<void> onRedirectPlanUpdate(String? url, String? provider) async {
-                await ref.read(domainServiceProvider).updateRedirectPreferences(
-                      domainId: widget.domainId,
-                      preferredUrl: url,
-                      preferredRedirectProvider: provider,
-                    );
-                ref.invalidate(domainProvider(widget.domainId));
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Redirect plan saved'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              }
-
-              void onRescan() {
-                _scanDomain(maxPages: 10);
-              }
-
-              // Get plan tier to check WHOIS access
-              final profileAsync = ref.watch(currentProfileProvider);
-              final planTier = profileAsync.maybeWhen(
-                data: (profile) => profile?.planTier ?? 'free',
-                orElse: () => 'free',
-              );
-              final whoisEnabled = canUseWhois(planTier);
-
-              Future<void> onWhoisUpgrade() async {
-                _showWhoisUpgradeDialog(context);
-              }
-
-              if (isDesktop) {
-                return _DesktopLayout(
-                  domain: domain,
-                  statusAsync: statusAsync,
-                  pagesAsync: pagesAsync,
-                  onNotesUpdated: onNotesUpdated,
-                  onWhoisFetch: onWhoisFetch,
-                  onWhoisUpgrade: onWhoisUpgrade,
-                  whoisEnabled: whoisEnabled,
-                  onDomainInfoUpdate: onDomainInfoUpdate,
-                  onRedirectPlanUpdate: onRedirectPlanUpdate,
-                  onRescan: onRescan,
-                );
-              } else {
-                return _MobileLayout(
-                  domain: domain,
-                  statusAsync: statusAsync,
-                  pagesAsync: pagesAsync,
-                  onNotesUpdated: onNotesUpdated,
-                  onWhoisFetch: onWhoisFetch,
-                  onWhoisUpgrade: onWhoisUpgrade,
-                  whoisEnabled: whoisEnabled,
-                  onDomainInfoUpdate: onDomainInfoUpdate,
-                  onRedirectPlanUpdate: onRedirectPlanUpdate,
-                  onRescan: onRescan,
-                );
-              }
-            },
+                  }
+                  ref.invalidate(domainProvider(widget.domainId));
+                },
+                onWhoisUpgrade: () => _showWhoisUpgradeDialog(context),
+                onDomainInfoUpdate: (registrar, expiry) async {
+                  await ref.read(domainServiceProvider).updateDomainInfo(
+                        domainId: widget.domainId,
+                        registrarName: registrar,
+                        expiryDate: expiry,
+                      );
+                  ref.invalidate(domainProvider(widget.domainId));
+                },
+                onNotesUpdated: (notes) async {
+                  await ref
+                      .read(domainServiceProvider)
+                      .updateDomain(domainId: widget.domainId, notes: notes);
+                  ref.invalidate(domainProvider(widget.domainId));
+                },
+              ),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -383,107 +389,18 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
   }
 }
 
-class _WhoisUpgradeOption extends StatelessWidget {
-  final String title;
-  final String price;
-  final String? badge;
-  final bool highlighted;
-  final VoidCallback onTap;
+// ============================================================================
+// OVERVIEW LENS - Health score, top suggestions, quick summary
+// ============================================================================
 
-  const _WhoisUpgradeOption({
-    required this.title,
-    required this.price,
-    this.badge,
-    this.highlighted = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: highlighted
-          ? Theme.of(context).colorScheme.primaryContainer
-          : Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          title,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        if (badge != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              badge!,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onPrimary,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Text(
-                      price,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MobileLayout extends StatelessWidget {
+class _OverviewLens extends StatelessWidget {
   final Domain domain;
-  final AsyncValue<DomainStatus?> statusAsync;
-  final AsyncValue<List<SitePage>> pagesAsync;
-  final Function(String) onNotesUpdated;
-  final Future<void> Function() onWhoisFetch;
-  final Future<void> Function() onWhoisUpgrade;
-  final bool whoisEnabled;
-  final Future<void> Function(String?, DateTime?) onDomainInfoUpdate;
-  final Future<void> Function(String?, String?) onRedirectPlanUpdate;
+  final AsyncValue<List<Suggestion>> suggestionsAsync;
   final VoidCallback onRescan;
 
-  const _MobileLayout({
+  const _OverviewLens({
     required this.domain,
-    required this.statusAsync,
-    required this.pagesAsync,
-    required this.onNotesUpdated,
-    required this.onWhoisFetch,
-    required this.onWhoisUpgrade,
-    required this.whoisEnabled,
-    required this.onDomainInfoUpdate,
-    required this.onRedirectPlanUpdate,
+    required this.suggestionsAsync,
     required this.onRescan,
   });
 
@@ -494,109 +411,286 @@ class _MobileLayout extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _HeaderSection(domain: domain),
-          const SizedBox(height: 24),
-          _DomainInfoSection(
+          _HeaderCard(domain: domain),
+          const SizedBox(height: 16),
+          _HealthScoreCard(domain: domain),
+          const SizedBox(height: 16),
+          _TopSuggestionsCard(
+            suggestionsAsync: suggestionsAsync,
             domain: domain,
-            onWhoisFetch: onWhoisFetch,
-            onWhoisUpgrade: onWhoisUpgrade,
-            whoisEnabled: whoisEnabled,
-            onManualUpdate: onDomainInfoUpdate,
           ),
-          const SizedBox(height: 24),
-          _StatusSection(statusAsync: statusAsync),
-          const SizedBox(height: 24),
-          _RedirectPlanSection(
-            domain: domain,
-            statusAsync: statusAsync,
-            onSave: onRedirectPlanUpdate,
-            onRescan: onRescan,
-          ),
-          const SizedBox(height: 24),
-          _PagesSection(pagesAsync: pagesAsync),
-          const SizedBox(height: 24),
-          _NotesSection(domain: domain, onSave: onNotesUpdated),
+          const SizedBox(height: 16),
+          _QuickStatsCard(domain: domain),
         ],
       ),
     );
   }
 }
 
-class _DesktopLayout extends StatelessWidget {
+class _HeaderCard extends StatelessWidget {
   final Domain domain;
-  final AsyncValue<DomainStatus?> statusAsync;
-  final AsyncValue<List<SitePage>> pagesAsync;
-  final Function(String) onNotesUpdated;
-  final Future<void> Function() onWhoisFetch;
-  final Future<void> Function() onWhoisUpgrade;
-  final bool whoisEnabled;
-  final Future<void> Function(String?, DateTime?) onDomainInfoUpdate;
-  final Future<void> Function(String?, String?) onRedirectPlanUpdate;
-  final VoidCallback onRescan;
 
-  const _DesktopLayout({
-    required this.domain,
-    required this.statusAsync,
-    required this.pagesAsync,
-    required this.onNotesUpdated,
-    required this.onWhoisFetch,
-    required this.onWhoisUpgrade,
-    required this.whoisEnabled,
-    required this.onDomainInfoUpdate,
-    required this.onRedirectPlanUpdate,
-    required this.onRescan,
+  const _HeaderCard({required this.domain});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            const Icon(Icons.language, size: 40),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    domain.displayName,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  if (domain.label != null)
+                    Text(
+                      domain.domainName,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                  if (domain.projectTag != null) ...[
+                    const SizedBox(height: 8),
+                    Chip(
+                      label: Text(domain.projectTag!),
+                      avatar: const Icon(Icons.folder, size: 16),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthScoreCard extends StatelessWidget {
+  final Domain domain;
+
+  const _HealthScoreCard({required this.domain});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasScore = domain.healthScore != null;
+    final score = domain.healthScore ?? 0;
+
+    Color scoreColor;
+    switch (domain.healthScoreLevel) {
+      case HealthScoreLevel.good:
+        scoreColor = Colors.green;
+        break;
+      case HealthScoreLevel.warning:
+        scoreColor = Colors.orange;
+        break;
+      case HealthScoreLevel.poor:
+        scoreColor = Colors.red;
+        break;
+      case HealthScoreLevel.unknown:
+        scoreColor = Colors.grey;
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.health_and_safety, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  'SEO Health',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!hasScore)
+              Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.info_outline, size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Scan this domain to see health score',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Score circle
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: scoreColor.withOpacity(0.1),
+                      border: Border.all(color: scoreColor, width: 4),
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$score',
+                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                  color: scoreColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          Text(
+                            '/100',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: scoreColor,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  // Breakdown
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _BreakdownRow(
+                          icon: Icons.title,
+                          label: 'Titles',
+                          percentage: domain.titlePercentage,
+                        ),
+                        const SizedBox(height: 8),
+                        _BreakdownRow(
+                          icon: Icons.description,
+                          label: 'Meta descriptions',
+                          percentage: domain.metaPercentage,
+                        ),
+                        const SizedBox(height: 8),
+                        _BreakdownRow(
+                          icon: Icons.looks_one,
+                          label: 'H1 headings',
+                          percentage: domain.h1Percentage,
+                        ),
+                        const SizedBox(height: 8),
+                        _ErrorRow(
+                          errorCount: domain.totalErrorPages,
+                          totalPages: domain.totalPagesScanned ?? 0,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            if (domain.lastScanAt != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Last scan: ${_formatDate(domain.lastScanAt!)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return DateFormat.yMMMd().add_jm().format(date);
+  }
+}
+
+class _BreakdownRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final double percentage;
+
+  const _BreakdownRow({
+    required this.icon,
+    required this.label,
+    required this.percentage,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HeaderSection(domain: domain),
-                const SizedBox(height: 24),
-                _DomainInfoSection(
-                  domain: domain,
-                  onWhoisFetch: onWhoisFetch,
-                  onWhoisUpgrade: onWhoisUpgrade,
-                  whoisEnabled: whoisEnabled,
-                  onManualUpdate: onDomainInfoUpdate,
-                ),
-                const SizedBox(height: 24),
-                _StatusSection(statusAsync: statusAsync),
-                const SizedBox(height: 24),
-                _RedirectPlanSection(
-                  domain: domain,
-                  statusAsync: statusAsync,
-                  onSave: onRedirectPlanUpdate,
-                  onRescan: onRescan,
-                ),
-                const SizedBox(height: 24),
-                _NotesSection(domain: domain, onSave: onNotesUpdated),
-              ],
-            ),
+    final pct = (percentage * 100).round();
+    final isGood = pct >= 80;
+    final color = isGood ? Colors.green : (pct >= 50 ? Colors.orange : Colors.red);
+
+    return Row(
+      children: [
+        Icon(
+          isGood ? Icons.check_circle : Icons.warning_amber,
+          size: 16,
+          color: color,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '$label: $pct%',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(width: 24),
-          Expanded(
-            flex: 3,
-            child: _PagesSection(pagesAsync: pagesAsync),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _HeaderSection extends StatelessWidget {
+class _ErrorRow extends StatelessWidget {
+  final int errorCount;
+  final int totalPages;
+
+  const _ErrorRow({required this.errorCount, required this.totalPages});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasErrors = errorCount > 0;
+
+    return Row(
+      children: [
+        Icon(
+          hasErrors ? Icons.error : Icons.check_circle,
+          size: 16,
+          color: hasErrors ? Colors.red : Colors.green,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            hasErrors
+                ? 'Errors: $errorCount of $totalPages pages'
+                : 'No error pages',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TopSuggestionsCard extends StatelessWidget {
+  final AsyncValue<List<Suggestion>> suggestionsAsync;
   final Domain domain;
 
-  const _HeaderSection({required this.domain});
+  const _TopSuggestionsCard({
+    required this.suggestionsAsync,
+    required this.domain,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -608,35 +702,505 @@ class _HeaderSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.language, size: 32),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        domain.displayName,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      if (domain.label != null)
+                const Icon(Icons.lightbulb_outline, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  'Top Suggestions',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            suggestionsAsync.when(
+              data: (suggestions) {
+                final openSuggestions = suggestions
+                    .where((s) => s.status == SuggestionStatus.open)
+                    .toList()
+                  ..sort((a, b) {
+                    // Sort by severity (high first)
+                    final severityOrder = {'high': 0, 'medium': 1, 'low': 2};
+                    return (severityOrder[a.severity.name] ?? 1)
+                        .compareTo(severityOrder[b.severity.name] ?? 1);
+                  });
+
+                if (openSuggestions.isEmpty) {
+                  return Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.check_circle, size: 48, color: Colors.green[300]),
+                        const SizedBox(height: 8),
                         Text(
-                          domain.domainName,
-                          style: Theme.of(context).textTheme.bodySmall,
+                          'No open suggestions',
+                          style: TextStyle(color: Colors.grey[600]),
                         ),
+                      ],
+                    ),
+                  );
+                }
+
+                final topSuggestions = openSuggestions.take(3).toList();
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'You have ${openSuggestions.length} open suggestion${openSuggestions.length == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    ...topSuggestions.map((s) => _SuggestionPreview(suggestion: s)),
+                  ],
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Text('Error: $e'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SuggestionPreview extends StatelessWidget {
+  final Suggestion suggestion;
+
+  const _SuggestionPreview({required this.suggestion});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SeverityBadge(severity: suggestion.severity),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  suggestion.title,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+                if (suggestion.description != null)
+                  Text(
+                    suggestion.description!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SeverityBadge extends StatelessWidget {
+  final SuggestionSeverity severity;
+
+  const _SeverityBadge({required this.severity});
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    switch (severity) {
+      case SuggestionSeverity.high:
+        color = Colors.red;
+        break;
+      case SuggestionSeverity.medium:
+        color = Colors.orange;
+        break;
+      case SuggestionSeverity.low:
+        color = Colors.blue;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        severity.label,
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickStatsCard extends StatelessWidget {
+  final Domain domain;
+
+  const _QuickStatsCard({required this.domain});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Quick Stats',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _StatItem(
+                  icon: Icons.pages,
+                  value: '${domain.totalPagesScanned ?? 0}',
+                  label: 'Pages',
+                ),
+                _StatItem(
+                  icon: Icons.check_circle,
+                  value: '${domain.pages2xx ?? 0}',
+                  label: 'OK',
+                  color: Colors.green,
+                ),
+                _StatItem(
+                  icon: Icons.warning,
+                  value: '${domain.pages4xx ?? 0}',
+                  label: '4xx',
+                  color: Colors.orange,
+                ),
+                _StatItem(
+                  icon: Icons.error,
+                  value: '${domain.pages5xx ?? 0}',
+                  label: '5xx',
+                  color: Colors.red,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color? color;
+
+  const _StatItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 24, color: color ?? Colors.grey[600]),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.grey[600],
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// ESSENTIALS LENS - Pages with SEO elements and filters
+// ============================================================================
+
+class _EssentialsLens extends StatefulWidget {
+  final Domain domain;
+  final AsyncValue<List<SitePage>> pagesAsync;
+
+  const _EssentialsLens({
+    required this.domain,
+    required this.pagesAsync,
+  });
+
+  @override
+  State<_EssentialsLens> createState() => _EssentialsLensState();
+}
+
+class _EssentialsLensState extends State<_EssentialsLens> {
+  String _filter = 'all';
+
+  List<SitePage> _filterPages(List<SitePage> pages) {
+    switch (_filter) {
+      case 'missing_title':
+        return pages.where((p) => p.title == null || p.title!.isEmpty).toList();
+      case 'missing_meta':
+        return pages.where((p) => p.metaDescription == null || p.metaDescription!.isEmpty).toList();
+      case 'missing_h1':
+        return pages.where((p) => p.h1 == null || p.h1!.isEmpty).toList();
+      case 'errors':
+        return pages.where((p) => p.httpStatus != null && p.httpStatus! >= 400).toList();
+      default:
+        return pages;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Filter chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              FilterChip(
+                label: const Text('All'),
+                selected: _filter == 'all',
+                onSelected: (_) => setState(() => _filter = 'all'),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Missing Title'),
+                selected: _filter == 'missing_title',
+                onSelected: (_) => setState(() => _filter = 'missing_title'),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Missing Meta'),
+                selected: _filter == 'missing_meta',
+                onSelected: (_) => setState(() => _filter = 'missing_meta'),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Missing H1'),
+                selected: _filter == 'missing_h1',
+                onSelected: (_) => setState(() => _filter = 'missing_h1'),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Errors'),
+                selected: _filter == 'errors',
+                onSelected: (_) => setState(() => _filter = 'errors'),
+              ),
+            ],
+          ),
+        ),
+        // Pages list
+        Expanded(
+          child: widget.pagesAsync.when(
+            data: (pages) {
+              final filteredPages = _filterPages(pages);
+
+              if (pages.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No pages scanned yet',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('Use the scan button to crawl this domain'),
                     ],
+                  ),
+                );
+              }
+
+              if (filteredPages.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle, size: 64, color: Colors.green[400]),
+                      const SizedBox(height: 16),
+                      const Text('No pages match this filter'),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: filteredPages.length,
+                itemBuilder: (context, index) {
+                  final page = filteredPages[index];
+                  return _PageCard(page: page);
+                },
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('Error: $e')),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PageCard extends StatelessWidget {
+  final SitePage page;
+
+  const _PageCard({required this.page});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = page.httpStatus != null
+        ? (page.httpStatus! >= 200 && page.httpStatus! < 300
+            ? Colors.green
+            : page.httpStatus! >= 300 && page.httpStatus! < 400
+                ? Colors.orange
+                : Colors.red)
+        : Colors.grey;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Chip(
+                  label: Text(
+                    '${page.httpStatus ?? '?'}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  backgroundColor: statusColor.withOpacity(0.2),
+                  side: BorderSide(color: statusColor),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    page.url,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
-            if (domain.projectTag != null) ...[
-              const SizedBox(height: 12),
-              Chip(
-                label: Text(domain.projectTag!),
-                avatar: const Icon(Icons.folder, size: 16),
-              ),
-            ],
+            const SizedBox(height: 8),
+            // SEO elements table
+            Table(
+              columnWidths: const {
+                0: FixedColumnWidth(100),
+                1: FlexColumnWidth(),
+              },
+              children: [
+                _buildTableRow(context, 'Title', page.title, page.title != null),
+                _buildTableRow(context, 'Meta', page.metaDescription, page.metaDescription != null),
+                _buildTableRow(context, 'H1', page.h1, page.h1 != null),
+                _buildTableRow(context, 'Canonical', page.canonicalUrl, page.canonicalUrl != null),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  TableRow _buildTableRow(BuildContext context, String label, String? value, bool present) {
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Icon(
+                present ? Icons.check : Icons.close,
+                size: 14,
+                color: present ? Colors.green : Colors.red,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            value ?? '—',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: present ? null : Colors.grey,
+                  fontStyle: present ? null : FontStyle.italic,
+                ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// REDIRECTS LENS - Status, redirect chain, redirect plan
+// ============================================================================
+
+class _RedirectsLens extends StatelessWidget {
+  final Domain domain;
+  final AsyncValue<DomainStatus?> statusAsync;
+  final VoidCallback onRescan;
+  final Future<void> Function(String?, String?) onRedirectPlanUpdate;
+
+  const _RedirectsLens({
+    required this.domain,
+    required this.statusAsync,
+    required this.onRescan,
+    required this.onRedirectPlanUpdate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _StatusSection(statusAsync: statusAsync),
+          const SizedBox(height: 16),
+          _RedirectPlanSection(
+            domain: domain,
+            statusAsync: statusAsync,
+            onSave: onRedirectPlanUpdate,
+            onRescan: onRescan,
+          ),
+        ],
       ),
     );
   }
@@ -668,7 +1232,7 @@ class _StatusSection extends StatelessWidget {
                       Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
                       const SizedBox(width: 8),
                       Text(
-                        'Click the refresh button to scan this domain',
+                        'Click the scan button to check this domain',
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                     ],
@@ -693,20 +1257,17 @@ class _StatusSection extends StatelessWidget {
                 _StatusChip(status: status.statusLabel),
                 const SizedBox(height: 12),
                 if (status.finalUrl != null) ...[
-                  const Text('Final URL:',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Final URL:', style: TextStyle(fontWeight: FontWeight.bold)),
                   Text(status.finalUrl!),
                   const SizedBox(height: 8),
                 ],
                 if (status.finalStatusCode != null) ...[
-                  const Text('Status Code:',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Status Code:', style: TextStyle(fontWeight: FontWeight.bold)),
                   Text(status.finalStatusCode.toString()),
                   const SizedBox(height: 8),
                 ],
                 if (status.hasRedirects) ...[
-                  const Text('Redirect Chain:',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Redirect Chain:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   ...status.redirectChain!.map((hop) => Padding(
                         padding: const EdgeInsets.only(left: 8, top: 4),
@@ -734,7 +1295,12 @@ class _StatusSection extends StatelessWidget {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
       error: (error, stack) => Card(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -745,7 +1311,7 @@ class _StatusSection extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    return DateFormat.yMMMd().add_jm().format(date);
   }
 }
 
@@ -779,211 +1345,117 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _PagesSection extends StatelessWidget {
-  final AsyncValue<List<SitePage>> pagesAsync;
+class _RedirectPlanSection extends StatefulWidget {
+  final Domain domain;
+  final AsyncValue<DomainStatus?> statusAsync;
+  final Future<void> Function(String?, String?) onSave;
+  final VoidCallback onRescan;
 
-  const _PagesSection({required this.pagesAsync});
-
-  @override
-  Widget build(BuildContext context) {
-    return pagesAsync.when(
-      data: (pages) {
-        if (pages.isEmpty) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pages',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'No pages scanned yet. Press the refresh button to scan.',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Pages (${pages.length})',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ...pages.map((page) {
-                  final statusColor = page.httpStatus != null
-                      ? (page.httpStatus! >= 200 && page.httpStatus! < 300
-                          ? Colors.green
-                          : page.httpStatus! >= 300 && page.httpStatus! < 400
-                              ? Colors.orange
-                              : Colors.red)
-                      : Colors.grey;
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                page.httpStatus != null && page.httpStatus! >= 200 && page.httpStatus! < 300
-                                    ? Icons.check_circle
-                                    : Icons.error,
-                                color: statusColor,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  page.title ?? 'No title',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontStyle: page.title == null ? FontStyle.italic : null,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (page.httpStatus != null)
-                                Chip(
-                                  label: Text(
-                                    page.httpStatus.toString(),
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  backgroundColor: statusColor.withOpacity(0.2),
-                                  side: BorderSide(color: statusColor),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            page.url,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (page.metaDescription != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              page.metaDescription!,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                          if (page.hasSeoIssues) ...[
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 4,
-                              runSpacing: 4,
-                              children: page.seoIssues.map((issue) {
-                                return Chip(
-                                  label: Text(
-                                    issue,
-                                    style: const TextStyle(fontSize: 10),
-                                  ),
-                                  backgroundColor: Colors.orange.withOpacity(0.2),
-                                  side: const BorderSide(color: Colors.orange),
-                                  visualDensity: VisualDensity.compact,
-                                  avatar: const Icon(Icons.warning, size: 14, color: Colors.orange),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                          const SizedBox(height: 4),
-                          Text(
-                            'Last scanned: ${_formatDate(page.lastScannedAt)}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ],
-            ),
-          ),
-        );
-      },
-      loading: () => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      ),
-      error: (error, stack) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text('Error: $error'),
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-class _NotesSection extends StatefulWidget {
-  final domain;
-  final Function(String) onSave;
-
-  const _NotesSection({
+  const _RedirectPlanSection({
     required this.domain,
+    required this.statusAsync,
     required this.onSave,
+    required this.onRescan,
   });
 
   @override
-  State<_NotesSection> createState() => _NotesSectionState();
+  State<_RedirectPlanSection> createState() => _RedirectPlanSectionState();
 }
 
-class _NotesSectionState extends State<_NotesSection> {
-  late final TextEditingController _controller;
-  bool _isEditing = false;
+class _RedirectPlanSectionState extends State<_RedirectPlanSection> {
+  late TextEditingController _urlController;
+  String? _selectedProvider;
+  bool _isSaving = false;
+
+  static const List<String> _providers = [
+    'Cloudflare',
+    'Netlify',
+    'Vercel',
+    'Namecheap',
+    'GoDaddy',
+    'AWS Route53',
+    'Other',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.domain.notes ?? '');
+    _urlController = TextEditingController(text: widget.domain.preferredUrl ?? '');
+    _selectedProvider = widget.domain.preferredRedirectProvider;
+  }
+
+  @override
+  void didUpdateWidget(_RedirectPlanSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.domain.preferredUrl != widget.domain.preferredUrl) {
+      _urlController.text = widget.domain.preferredUrl ?? '';
+    }
+    if (oldWidget.domain.preferredRedirectProvider != widget.domain.preferredRedirectProvider) {
+      _selectedProvider = widget.domain.preferredRedirectProvider;
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _urlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+    try {
+      await widget.onSave(
+        _urlController.text.isEmpty ? null : _urlController.text,
+        _selectedProvider,
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  bool _hasMismatch(DomainStatus? status) {
+    if (status?.finalUrl == null || widget.domain.preferredUrl == null) {
+      return false;
+    }
+    final currentUrl = status!.finalUrl!.toLowerCase().replaceAll(RegExp(r'/$'), '');
+    final preferredUrl = widget.domain.preferredUrl!.toLowerCase().replaceAll(RegExp(r'/$'), '');
+    return currentUrl != preferredUrl;
+  }
+
+  String _getProviderInstructions(String? provider) {
+    final domainName = widget.domain.domainName;
+    final preferredUrl = _urlController.text.isNotEmpty
+        ? _urlController.text
+        : 'https://www.your-site.com/';
+
+    switch (provider) {
+      case 'Cloudflare':
+        return '''Cloudflare setup:
+1. Go to your Cloudflare dashboard
+2. Select your domain ($domainName)
+3. Navigate to Rules → Page Rules
+4. Create a new rule matching $domainName/*
+5. Set "Forwarding URL (301)" to $preferredUrl\$1
+6. Save and deploy''';
+      case 'Netlify':
+        return '''Netlify setup:
+1. In your site's root, create/edit _redirects file
+2. Add this line:
+   /*  $preferredUrl:splat  301!
+3. Deploy your changes''';
+      case 'Vercel':
+        return '''Vercel setup:
+1. Edit vercel.json in your project root
+2. Add a redirect rule:
+   {"redirects": [{"source": "/:path*", "destination": "$preferredUrl:path*", "permanent": true}]}
+3. Deploy your changes''';
+      default:
+        return '''General redirect setup:
+1. Access your DNS or hosting provider's dashboard
+2. Look for "Redirects", "Forwarding", or "Page Rules"
+3. Create a 301 redirect from $domainName to $preferredUrl
+4. Save changes and wait for propagation''';
+    }
   }
 
   @override
@@ -994,63 +1466,97 @@ class _NotesSectionState extends State<_NotesSection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Notes',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                if (!_isEditing)
-                  TextButton.icon(
-                    onPressed: () => setState(() => _isEditing = true),
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Edit'),
-                  ),
-              ],
+            Text('Redirect Plan', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            widget.statusAsync.when(
+              data: (status) {
+                if (_hasMismatch(status)) {
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber, color: Colors.orange),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Current destination does not match preferred URL',
+                                style: TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                'Current: ${status?.finalUrl ?? "Unknown"}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(onPressed: widget.onRescan, child: const Text('Rescan')),
+                      ],
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
             ),
-            const SizedBox(height: 8),
-            if (_isEditing) ...[
-              TextField(
-                controller: _controller,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Add notes about this domain...',
-                ),
+            TextField(
+              controller: _urlController,
+              decoration: const InputDecoration(
+                labelText: 'Preferred URL',
+                border: OutlineInputBorder(),
+                hintText: 'https://www.your-primary-site.com/',
               ),
-              const SizedBox(height: 8),
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedProvider,
+              decoration: const InputDecoration(labelText: 'Redirect Provider', border: OutlineInputBorder()),
+              items: _providers.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+              onChanged: (value) => setState(() => _selectedProvider = value),
+              hint: const Text('Select your provider'),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _isSaving ? null : _save,
+                icon: _isSaving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save),
+                label: Text(_isSaving ? 'Saving...' : 'Save Redirect Plan'),
+              ),
+            ),
+            if (_selectedProvider != null && _urlController.text.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    onPressed: () {
-                      _controller.text = widget.domain.notes ?? '';
-                      setState(() => _isEditing = false);
-                    },
-                    child: const Text('Cancel'),
-                  ),
+                  const Icon(Icons.lightbulb_outline, size: 20),
                   const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () async {
-                      await widget.onSave(_controller.text);
-                      setState(() => _isEditing = false);
-                    },
-                    child: const Text('Save'),
-                  ),
+                  Text('Setup Instructions', style: Theme.of(context).textTheme.titleSmall),
                 ],
               ),
-            ] else ...[
-              Text(
-                _controller.text.isEmpty
-                    ? 'No notes yet'
-                    : _controller.text,
-                style: _controller.text.isEmpty
-                    ? Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey,
-                        )
-                    : null,
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
+                child: SelectableText(
+                  _getProviderInstructions(_selectedProvider),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.5),
+                ),
               ),
             ],
           ],
@@ -1061,13 +1567,126 @@ class _NotesSectionState extends State<_NotesSection> {
 }
 
 // ============================================================================
-// Domain Info Section - WHOIS/Registrar/Expiry
+// EXPIRY LENS - WHOIS info, expiry, notes
 // ============================================================================
+
+class _ExpiryLens extends StatelessWidget {
+  final Domain domain;
+  final bool whoisEnabled;
+  final Future<void> Function() onWhoisFetch;
+  final VoidCallback onWhoisUpgrade;
+  final Future<void> Function(String?, DateTime?) onDomainInfoUpdate;
+  final Future<void> Function(String) onNotesUpdated;
+
+  const _ExpiryLens({
+    required this.domain,
+    required this.whoisEnabled,
+    required this.onWhoisFetch,
+    required this.onWhoisUpgrade,
+    required this.onDomainInfoUpdate,
+    required this.onNotesUpdated,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DomainInfoSection(
+            domain: domain,
+            onWhoisFetch: onWhoisFetch,
+            onWhoisUpgrade: onWhoisUpgrade,
+            whoisEnabled: whoisEnabled,
+            onManualUpdate: onDomainInfoUpdate,
+          ),
+          const SizedBox(height: 16),
+          _ExpiryWarningCard(domain: domain),
+          const SizedBox(height: 16),
+          _NotesSection(domain: domain, onSave: onNotesUpdated),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpiryWarningCard extends StatelessWidget {
+  final Domain domain;
+
+  const _ExpiryWarningCard({required this.domain});
+
+  @override
+  Widget build(BuildContext context) {
+    if (domain.expiryDate == null) {
+      return const SizedBox.shrink();
+    }
+
+    final daysUntilExpiry = domain.expiryDate!.difference(DateTime.now()).inDays;
+    final isExpired = domain.isExpired;
+    final expiresSoon = domain.expiresWithinDays(30);
+
+    if (!isExpired && !expiresSoon) {
+      return Card(
+        color: Colors.green.withOpacity(0.1),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Domain is secure', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('Expires in $daysUntilExpiry days'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      color: isExpired ? Colors.red.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            Icon(
+              isExpired ? Icons.error : Icons.warning,
+              color: isExpired ? Colors.red : Colors.orange,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isExpired ? 'Domain has expired!' : 'Domain expires soon!',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isExpired ? Colors.red : Colors.orange,
+                    ),
+                  ),
+                  Text(isExpired ? 'Renew immediately to avoid losing this domain' : 'Expires in $daysUntilExpiry days'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _DomainInfoSection extends StatefulWidget {
   final Domain domain;
   final Future<void> Function() onWhoisFetch;
-  final Future<void> Function() onWhoisUpgrade;
+  final VoidCallback onWhoisUpgrade;
   final bool whoisEnabled;
   final Future<void> Function(String?, DateTime?) onManualUpdate;
 
@@ -1156,10 +1775,7 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Domain Info',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Domain Info', style: Theme.of(context).textTheme.titleMedium),
                 if (!_isEditing)
                   TextButton.icon(
                     onPressed: () => setState(() => _isEditing = true),
@@ -1170,7 +1786,6 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
             ),
             const SizedBox(height: 16),
             if (_isEditing) ...[
-              // Manual edit form
               TextField(
                 controller: _registrarController,
                 decoration: const InputDecoration(
@@ -1183,16 +1798,11 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
               InkWell(
                 onTap: _selectDate,
                 child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Expiry Date',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: 'Expiry Date', border: OutlineInputBorder()),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(_selectedExpiry != null
-                          ? DateFormat.yMMMd().format(_selectedExpiry!)
-                          : 'Select date'),
+                      Text(_selectedExpiry != null ? DateFormat.yMMMd().format(_selectedExpiry!) : 'Select date'),
                       const Icon(Icons.calendar_today),
                     ],
                   ),
@@ -1211,14 +1821,10 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _saveManual,
-                    child: const Text('Save'),
-                  ),
+                  FilledButton(onPressed: _saveManual, child: const Text('Save')),
                 ],
               ),
             ] else ...[
-              // Display mode
               _InfoRow(
                 icon: Icons.business,
                 label: 'Registrar',
@@ -1229,9 +1835,7 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
               _InfoRow(
                 icon: Icons.event,
                 label: 'Expires',
-                value: widget.domain.expiryDate != null
-                    ? DateFormat.yMMMd().format(widget.domain.expiryDate!)
-                    : 'Unknown',
+                value: widget.domain.expiryDate != null ? DateFormat.yMMMd().format(widget.domain.expiryDate!) : 'Unknown',
                 isUnknown: widget.domain.expiryDate == null,
                 warning: expiryWarning,
                 error: isExpired,
@@ -1244,11 +1848,7 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
                     ? OutlinedButton.icon(
                         onPressed: _isLoading ? null : _fetchWhois,
                         icon: _isLoading
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.refresh),
                         label: Text(_isLoading ? 'Fetching...' : 'Fetch from WHOIS'),
                       )
@@ -1315,12 +1915,7 @@ class _InfoRow extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-            ),
+            Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
             Row(
               children: [
                 Text(
@@ -1337,17 +1932,11 @@ class _InfoRow extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: error ? Colors.red.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: error ? Colors.red : Colors.orange,
-                      ),
+                      border: Border.all(color: error ? Colors.red : Colors.orange),
                     ),
                     child: Text(
                       warningText ?? 'Warning',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: error ? Colors.red : Colors.orange,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: TextStyle(fontSize: 11, color: error ? Colors.red : Colors.orange, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -1360,165 +1949,30 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-// ============================================================================
-// Redirect Plan Section
-// ============================================================================
-
-class _RedirectPlanSection extends StatefulWidget {
+class _NotesSection extends StatefulWidget {
   final Domain domain;
-  final AsyncValue<DomainStatus?> statusAsync;
-  final Future<void> Function(String?, String?) onSave;
-  final VoidCallback onRescan;
+  final Future<void> Function(String) onSave;
 
-  const _RedirectPlanSection({
-    required this.domain,
-    required this.statusAsync,
-    required this.onSave,
-    required this.onRescan,
-  });
+  const _NotesSection({required this.domain, required this.onSave});
 
   @override
-  State<_RedirectPlanSection> createState() => _RedirectPlanSectionState();
+  State<_NotesSection> createState() => _NotesSectionState();
 }
 
-class _RedirectPlanSectionState extends State<_RedirectPlanSection> {
-  late TextEditingController _urlController;
-  String? _selectedProvider;
-  bool _isSaving = false;
-
-  static const List<String> _providers = [
-    'Cloudflare',
-    'Netlify',
-    'Vercel',
-    'Namecheap',
-    'GoDaddy',
-    'AWS Route53',
-    'Other',
-  ];
+class _NotesSectionState extends State<_NotesSection> {
+  late final TextEditingController _controller;
+  bool _isEditing = false;
 
   @override
   void initState() {
     super.initState();
-    _urlController = TextEditingController(text: widget.domain.preferredUrl ?? '');
-    _selectedProvider = widget.domain.preferredRedirectProvider;
-  }
-
-  @override
-  void didUpdateWidget(_RedirectPlanSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.domain.preferredUrl != widget.domain.preferredUrl) {
-      _urlController.text = widget.domain.preferredUrl ?? '';
-    }
-    if (oldWidget.domain.preferredRedirectProvider != widget.domain.preferredRedirectProvider) {
-      _selectedProvider = widget.domain.preferredRedirectProvider;
-    }
+    _controller = TextEditingController(text: widget.domain.notes ?? '');
   }
 
   @override
   void dispose() {
-    _urlController.dispose();
+    _controller.dispose();
     super.dispose();
-  }
-
-  Future<void> _save() async {
-    setState(() => _isSaving = true);
-    try {
-      await widget.onSave(
-        _urlController.text.isEmpty ? null : _urlController.text,
-        _selectedProvider,
-      );
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  bool _hasMismatch(DomainStatus? status) {
-    if (status?.finalUrl == null || widget.domain.preferredUrl == null) {
-      return false;
-    }
-    // Normalize URLs for comparison
-    final currentUrl = status!.finalUrl!.toLowerCase().replaceAll(RegExp(r'/$'), '');
-    final preferredUrl = widget.domain.preferredUrl!.toLowerCase().replaceAll(RegExp(r'/$'), '');
-    return currentUrl != preferredUrl;
-  }
-
-  String _getProviderInstructions(String? provider) {
-    final domainName = widget.domain.domainName;
-    final preferredUrl = _urlController.text.isNotEmpty
-        ? _urlController.text
-        : 'https://www.your-site.com/';
-
-    switch (provider) {
-      case 'Cloudflare':
-        return '''Cloudflare setup:
-1. Go to your Cloudflare dashboard
-2. Select your domain ($domainName)
-3. Navigate to Rules → Page Rules (or Redirect Rules)
-4. Create a new rule matching $domainName/*
-5. Set "Forwarding URL (301)" to $preferredUrl\$1
-6. Save and deploy
-7. Click "Rescan" in SEO Lens to verify''';
-
-      case 'Netlify':
-        return '''Netlify setup:
-1. In your site's root, create/edit _redirects file
-2. Add this line:
-   /*  $preferredUrl:splat  301!
-3. Deploy your changes
-4. Click "Rescan" in SEO Lens to verify''';
-
-      case 'Vercel':
-        return '''Vercel setup:
-1. In your project root, edit vercel.json
-2. Add a redirect rule:
-   {
-     "redirects": [
-       { "source": "/:path*", "destination": "$preferredUrl:path*", "permanent": true }
-     ]
-   }
-3. Deploy your changes
-4. Click "Rescan" in SEO Lens to verify''';
-
-      case 'Namecheap':
-        return '''Namecheap setup:
-1. Log in to your Namecheap account
-2. Go to Domain List → Manage for $domainName
-3. Navigate to Advanced DNS
-4. Add a URL Redirect Record:
-   - Host: @
-   - Value: $preferredUrl
-   - Type: Permanent (301)
-5. Save changes (may take up to 48 hours)
-6. Click "Rescan" in SEO Lens to verify''';
-
-      case 'GoDaddy':
-        return '''GoDaddy setup:
-1. Log in to your GoDaddy account
-2. Go to My Products → DNS
-3. Select $domainName
-4. Add a Forwarding record:
-   - Forward to: $preferredUrl
-   - Forward Type: Permanent (301)
-5. Save changes
-6. Click "Rescan" in SEO Lens to verify''';
-
-      case 'AWS Route53':
-        return '''AWS Route53 setup:
-1. Go to Route 53 in the AWS Console
-2. Navigate to Hosted zones → $domainName
-3. Create an A record pointing to your target
-4. Or use CloudFront for HTTPS redirects
-5. Click "Rescan" in SEO Lens to verify''';
-
-      case 'Other':
-      default:
-        return '''General redirect setup:
-1. Access your DNS or hosting provider's dashboard
-2. Look for "Redirects", "Forwarding", or "Page Rules"
-3. Create a 301 (permanent) redirect from $domainName to $preferredUrl
-4. Save changes and wait for propagation
-5. Click "Rescan" in SEO Lens to verify''';
-    }
   }
 
   @override
@@ -1529,134 +1983,122 @@ class _RedirectPlanSectionState extends State<_RedirectPlanSection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Redirect Plan',
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Notes', style: Theme.of(context).textTheme.titleMedium),
+                if (!_isEditing)
+                  TextButton.icon(
+                    onPressed: () => setState(() => _isEditing = true),
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Edit'),
+                  ),
+              ],
             ),
-            const SizedBox(height: 16),
-
-            // Mismatch warning
-            widget.statusAsync.when(
-              data: (status) {
-                if (_hasMismatch(status)) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.warning_amber, color: Colors.orange),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Current destination does not match your preferred URL',
-                                style: TextStyle(fontWeight: FontWeight.w500),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Current: ${status?.finalUrl ?? "Unknown"}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: widget.onRescan,
-                          child: const Text('Rescan'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
-
-            // Preferred URL input
-            TextField(
-              controller: _urlController,
-              decoration: const InputDecoration(
-                labelText: 'Preferred URL',
-                border: OutlineInputBorder(),
-                hintText: 'https://www.your-primary-site.com/',
-                helperText: 'Where should this domain ultimately redirect or resolve?',
+            const SizedBox(height: 8),
+            if (_isEditing) ...[
+              TextField(
+                controller: _controller,
+                maxLines: 5,
+                decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Add notes about this domain...'),
               ),
-              keyboardType: TextInputType.url,
-            ),
-            const SizedBox(height: 16),
-
-            // Provider dropdown
-            DropdownButtonFormField<String>(
-              value: _selectedProvider,
-              decoration: const InputDecoration(
-                labelText: 'Redirect Provider',
-                border: OutlineInputBorder(),
-              ),
-              items: _providers.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-              onChanged: (value) => setState(() => _selectedProvider = value),
-              hint: const Text('Select your provider'),
-            ),
-            const SizedBox(height: 16),
-
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _isSaving ? null : _save,
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(_isSaving ? 'Saving...' : 'Save Redirect Plan'),
-              ),
-            ),
-
-            // Instructions (shown when provider is selected)
-            if (_selectedProvider != null && _urlController.text.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Icon(Icons.lightbulb_outline, size: 20),
+                  TextButton(
+                    onPressed: () {
+                      _controller.text = widget.domain.notes ?? '';
+                      setState(() => _isEditing = false);
+                    },
+                    child: const Text('Cancel'),
+                  ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Setup Instructions',
-                    style: Theme.of(context).textTheme.titleSmall,
+                  FilledButton(
+                    onPressed: () async {
+                      await widget.onSave(_controller.text);
+                      setState(() => _isEditing = false);
+                    },
+                    child: const Text('Save'),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  _getProviderInstructions(_selectedProvider),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                        height: 1.5,
-                      ),
-                ),
+            ] else ...[
+              Text(
+                _controller.text.isEmpty ? 'No notes yet' : _controller.text,
+                style: _controller.text.isEmpty
+                    ? Theme.of(context).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic, color: Colors.grey)
+                    : null,
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// WHOIS UPGRADE OPTION
+// ============================================================================
+
+class _WhoisUpgradeOption extends StatelessWidget {
+  final String title;
+  final String price;
+  final String? badge;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _WhoisUpgradeOption({
+    required this.title,
+    required this.price,
+    this.badge,
+    this.highlighted = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: highlighted ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                        if (badge != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              badge!,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onPrimary),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(price, style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );

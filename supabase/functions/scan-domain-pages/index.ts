@@ -28,6 +28,18 @@ interface SuggestionInsert {
   title: string
   description: string
   severity: string
+  impact: string
+  effort: string
+}
+
+interface HealthSummary {
+  totalPagesScanned: number
+  pagesMissingTitle: number
+  pagesMissingMeta: number
+  pagesMissingH1: number
+  pages2xx: number
+  pages4xx: number
+  pages5xx: number
 }
 
 const corsHeaders = {
@@ -115,6 +127,23 @@ async function parsePage(url: string, baseOrigin: string): Promise<PageData | nu
   }
 }
 
+// Get suggestion metadata (impact, effort) based on type
+function getSuggestionMetadata(type: string): { impact: string; effort: string } {
+  const metadata: Record<string, { impact: string; effort: string }> = {
+    'missing_or_short_title': { impact: 'visibility', effort: 'quick_win' },
+    'title_too_long': { impact: 'visibility', effort: 'quick_win' },
+    'missing_meta_description': { impact: 'click_through', effort: 'quick_win' },
+    'short_meta_description': { impact: 'click_through', effort: 'quick_win' },
+    'long_meta_description': { impact: 'click_through', effort: 'quick_win' },
+    'canonical_points_elsewhere': { impact: 'technical', effort: 'moderate' },
+    'invalid_canonical': { impact: 'technical', effort: 'moderate' },
+    'missing_h1': { impact: 'essentials', effort: 'quick_win' },
+    'noindex_set': { impact: 'visibility', effort: 'moderate' },
+    'page_error_status': { impact: 'technical', effort: 'deep_change' },
+  }
+  return metadata[type] || { impact: 'technical', effort: 'moderate' }
+}
+
 // Generate suggestions for a page
 function generateSuggestions(
   pageData: PageData,
@@ -127,59 +156,79 @@ function generateSuggestions(
 
   // Check for missing or short title
   if (!pageData.title || pageData.title.length < 10) {
+    const type = 'missing_or_short_title'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'missing_or_short_title',
+      suggestion_type: type,
       title: 'Add a better page title',
       description: pageData.title
         ? `The title "${pageData.title}" is very short (${pageData.title.length} chars). Aim for 30-60 characters.`
         : 'This page is missing a title tag. Add a descriptive title to improve SEO.',
       severity: 'high',
+      impact,
+      effort,
     })
   } else if (pageData.title.length > 60) {
+    const type = 'title_too_long'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'title_too_long',
+      suggestion_type: type,
       title: 'Title tag is too long',
       description: `The title is ${pageData.title.length} characters. Search engines typically display 50-60 characters.`,
       severity: 'low',
+      impact,
+      effort,
     })
   }
 
   // Check for missing meta description
   if (!pageData.metaDescription) {
+    const type = 'missing_meta_description'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'missing_meta_description',
+      suggestion_type: type,
       title: 'Add a meta description',
       description: 'This page has no meta description. Add one (150-160 characters) to improve click-through rate.',
       severity: 'medium',
+      impact,
+      effort,
     })
   } else if (pageData.metaDescription.length < 50) {
+    const type = 'short_meta_description'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'short_meta_description',
+      suggestion_type: type,
       title: 'Meta description is too short',
       description: `Your meta description is only ${pageData.metaDescription.length} characters. Aim for 150-160 characters.`,
       severity: 'low',
+      impact,
+      effort,
     })
   } else if (pageData.metaDescription.length > 160) {
+    const type = 'long_meta_description'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'long_meta_description',
+      suggestion_type: type,
       title: 'Meta description is too long',
       description: `Your meta description is ${pageData.metaDescription.length} characters. It may be truncated in search results.`,
       severity: 'low',
+      impact,
+      effort,
     })
   }
 
@@ -190,69 +239,144 @@ function generateSuggestions(
       const pageUrl = new URL(pageData.url)
 
       if (canonicalUrl.origin !== pageUrl.origin) {
+        const type = 'canonical_points_elsewhere'
+        const { impact, effort } = getSuggestionMetadata(type)
         suggestions.push({
           user_id: userId,
           domain_id: domainId,
           page_id: pageId,
-          suggestion_type: 'canonical_points_elsewhere',
+          suggestion_type: type,
           title: 'Canonical URL points to different domain',
           description: `The canonical URL points to ${canonicalUrl.host}. Search engines may ignore this page.`,
           severity: 'high',
+          impact,
+          effort,
         })
       }
     } catch {
+      const type = 'invalid_canonical'
+      const { impact, effort } = getSuggestionMetadata(type)
       suggestions.push({
         user_id: userId,
         domain_id: domainId,
         page_id: pageId,
-        suggestion_type: 'invalid_canonical',
+        suggestion_type: type,
         title: 'Invalid canonical URL',
         description: `The canonical URL "${pageData.canonical}" is malformed.`,
         severity: 'medium',
+        impact,
+        effort,
       })
     }
   }
 
   // Check for missing H1
   if (!pageData.h1) {
+    const type = 'missing_h1'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'missing_h1',
+      suggestion_type: type,
       title: 'Add an H1 heading',
       description: 'This page has no H1 heading. Add one to improve SEO structure.',
       severity: 'medium',
+      impact,
+      effort,
     })
   }
 
   // Check for noindex directive
   if (pageData.robots && pageData.robots.toLowerCase().includes('noindex')) {
+    const type = 'noindex_set'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'noindex_set',
+      suggestion_type: type,
       title: 'Page is set to noindex',
       description: 'This page will not appear in search results. Remove noindex if you want it indexed.',
       severity: 'high',
+      impact,
+      effort,
     })
   }
 
   // Check for HTTP error status
   if (pageData.httpStatus >= 400) {
+    const type = 'page_error_status'
+    const { impact, effort } = getSuggestionMetadata(type)
     suggestions.push({
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
-      suggestion_type: 'page_error_status',
+      suggestion_type: type,
       title: `Page returns ${pageData.httpStatus} error`,
       description: `This page responded with HTTP ${pageData.httpStatus}. Fix the error to ensure accessibility.`,
       severity: 'high',
+      impact,
+      effort,
     })
   }
 
   return suggestions
+}
+
+// Compute health score from summary
+function computeHealthScore(summary: HealthSummary): number {
+  const { totalPagesScanned, pagesMissingTitle, pagesMissingMeta, pagesMissingH1, pages4xx, pages5xx } = summary
+
+  if (totalPagesScanned === 0) return 100
+
+  // Calculate penalties (capped at max penalty per category)
+  const titlePenalty = Math.min(30, (30 * pagesMissingTitle) / totalPagesScanned)
+  const metaPenalty = Math.min(20, (20 * pagesMissingMeta) / totalPagesScanned)
+  const h1Penalty = Math.min(20, (20 * pagesMissingH1) / totalPagesScanned)
+  const fourXXPenalty = Math.min(20, (20 * pages4xx) / totalPagesScanned)
+  const fiveXXPenalty = Math.min(10, (10 * pages5xx) / totalPagesScanned)
+
+  const score = 100 - titlePenalty - metaPenalty - h1Penalty - fourXXPenalty - fiveXXPenalty
+
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+// Aggregate page data to compute health summary
+function computeHealthSummary(allPageData: { pageData: PageData }[]): HealthSummary {
+  const summary: HealthSummary = {
+    totalPagesScanned: allPageData.length,
+    pagesMissingTitle: 0,
+    pagesMissingMeta: 0,
+    pagesMissingH1: 0,
+    pages2xx: 0,
+    pages4xx: 0,
+    pages5xx: 0,
+  }
+
+  for (const { pageData } of allPageData) {
+    // Count missing elements
+    if (!pageData.title || pageData.title.length < 10) {
+      summary.pagesMissingTitle++
+    }
+    if (!pageData.metaDescription) {
+      summary.pagesMissingMeta++
+    }
+    if (!pageData.h1) {
+      summary.pagesMissingH1++
+    }
+
+    // Count status codes
+    if (pageData.httpStatus >= 200 && pageData.httpStatus < 300) {
+      summary.pages2xx++
+    } else if (pageData.httpStatus >= 400 && pageData.httpStatus < 500) {
+      summary.pages4xx++
+    } else if (pageData.httpStatus >= 500) {
+      summary.pages5xx++
+    }
+  }
+
+  return summary
 }
 
 serve(async (req) => {
@@ -401,7 +525,30 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Crawl complete: ${pagesScanned} pages, ${allSuggestions.length} suggestions`)
+    // Compute and update domain health score
+    const healthSummary = computeHealthSummary(allPageData)
+    const healthScore = computeHealthScore(healthSummary)
+
+    const { error: updateError } = await supabaseClient
+      .from('domains')
+      .update({
+        health_score: healthScore,
+        total_pages_scanned: healthSummary.totalPagesScanned,
+        pages_missing_title: healthSummary.pagesMissingTitle,
+        pages_missing_meta: healthSummary.pagesMissingMeta,
+        pages_missing_h1: healthSummary.pagesMissingH1,
+        pages_2xx: healthSummary.pages2xx,
+        pages_4xx: healthSummary.pages4xx,
+        pages_5xx: healthSummary.pages5xx,
+        last_scan_at: new Date().toISOString(),
+      })
+      .eq('id', domainId)
+
+    if (updateError) {
+      console.error('Error updating domain health:', updateError)
+    }
+
+    console.log(`Crawl complete: ${pagesScanned} pages, ${allSuggestions.length} suggestions, health score: ${healthScore}`)
 
     return new Response(
       JSON.stringify({
@@ -410,6 +557,8 @@ serve(async (req) => {
         pagesScanned,
         suggestionsCreated: allSuggestions.length,
         urlsFound: scannedUrls.size + urlQueue.length,
+        healthScore,
+        healthSummary,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
