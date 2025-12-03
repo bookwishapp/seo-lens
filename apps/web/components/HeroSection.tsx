@@ -99,6 +99,25 @@ export function HeroSection() {
                   Prioritize fixes instead of sifting through raw data.
                 </span>
               </li>
+              <li className="flex items-start gap-3">
+                <svg
+                  className="w-6 h-6 text-primary flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-gray-700 text-base sm:text-lg">
+                  <strong>PLUS:</strong> Never miss another domain expiration date again!
+                </span>
+              </li>
             </ul>
 
             {/* CTAs */}
