@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 // Supabase project URL for edge functions
 const SUPABASE_URL = 'https://npvynslhkwcstiserepx.supabase.co'
 
+// Production app URL (Flutter web app)
+const APP_URL = 'https://seolens.io/app'
+
 // Plan configuration with price IDs and checkout modes
 const PLAN_CONFIG = {
   'pro-monthly': {
@@ -24,7 +27,7 @@ const PLAN_CONFIG = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams, origin } = new URL(request.url)
+    const { searchParams } = new URL(request.url)
     const plan = searchParams.get('plan') as keyof typeof PLAN_CONFIG
 
     if (!plan || !PLAN_CONFIG[plan]) {
@@ -35,11 +38,12 @@ export async function GET(request: NextRequest) {
     }
 
     const config = PLAN_CONFIG[plan]
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || `${origin}/app`
 
-    // Build success and cancel URLs for Stripe
-    const successUrl = `${appUrl}#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
-    const cancelUrl = `${appUrl}#/checkout/canceled`
+    // Build success and cancel URLs for Stripe (hardcoded for reliability)
+    const successUrl = `${APP_URL}#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+    const cancelUrl = `${APP_URL}#/checkout/canceled`
+
+    console.log('Creating checkout session:', { plan, successUrl, cancelUrl })
 
     // Call Supabase edge function to create Stripe checkout session (guest mode)
     const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {

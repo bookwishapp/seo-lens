@@ -147,12 +147,36 @@ async function handleCheckoutCompleted(
       return
     }
 
-    // Check if user exists with this email
-    const { data: existingUser } = await supabase.auth.admin.listUsers()
-    const userWithEmail = existingUser?.users?.find(u => u.email === customerEmail)
+    console.log('Looking up user by email:', customerEmail)
+
+    // Look up user by email in auth.users via admin API
+    // Use pagination to handle large user bases
+    let userWithEmail: { id: string } | null = null
+    let page = 1
+    const perPage = 1000
+
+    while (!userWithEmail) {
+      const { data: usersPage, error: listError } = await supabase.auth.admin.listUsers({ page, perPage })
+
+      if (listError) {
+        console.error('Error listing users:', listError)
+        break
+      }
+
+      if (!usersPage?.users?.length) break
+
+      const found = usersPage.users.find(u => u.email?.toLowerCase() === customerEmail.toLowerCase())
+      if (found) {
+        userWithEmail = { id: found.id }
+        break
+      }
+
+      if (usersPage.users.length < perPage) break
+      page++
+    }
 
     if (userWithEmail) {
-      console.log('Found existing user with email:', customerEmail)
+      console.log('Found existing user with email:', customerEmail, 'ID:', userWithEmail.id)
       supabaseUserId = userWithEmail.id
     } else {
       // Create new user with random password (they'll use magic link to log in)
@@ -178,6 +202,22 @@ async function handleCheckoutCompleted(
   const stripeCustomerId = typeof session.customer === 'string'
     ? session.customer
     : session.customer?.id
+
+  // Ensure profile exists before updating (handles new users and edge cases)
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .upsert({
+      id: supabaseUserId,
+      created_at: new Date().toISOString(),
+    }, {
+      onConflict: 'id',
+      ignoreDuplicates: true, // Don't update if exists
+    })
+
+  if (profileError) {
+    console.error('Failed to ensure profile exists:', profileError)
+    // Continue anyway - update might still work if profile exists
+  }
 
   if (session.mode === 'subscription') {
     // Handle Pro subscription checkout

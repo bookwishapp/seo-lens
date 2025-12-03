@@ -1,0 +1,3 @@
+# Disable JWT verification to allow guest checkout (payment-first flow)
+# The function handles authentication internally when needed
+verify_jwt = false
