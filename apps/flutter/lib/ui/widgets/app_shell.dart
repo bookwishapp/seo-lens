@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:html' as html;
 
 // Brand color from landing page
 const Color _primaryBlue = Color(0xFF5F9DF7);
@@ -48,7 +49,8 @@ class _MobileLayout extends StatelessWidget {
       appBar: AppBar(
         title: InkWell(
           onTap: () {
-            context.go('/');
+            // Navigate to marketing site root (outside Flutter app)
+            html.window.location.href = '/';
           },
           child: Text(
             'SEO Lens',
@@ -136,7 +138,8 @@ class _DesktopLayout extends StatelessWidget {
       appBar: AppBar(
         title: InkWell(
           onTap: () {
-            context.go('/');
+            // Navigate to marketing site root (outside Flutter app)
+            html.window.location.href = '/';
           },
           child: Text(
             'SEO Lens',
