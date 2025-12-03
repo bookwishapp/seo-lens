@@ -126,27 +126,11 @@ export function HeroSection() {
           {/* Right column - Product mockup */}
           <div className="relative lg:order-last order-first">
             <div className="aspect-[4/3] relative rounded-lg overflow-hidden shadow-2xl border border-gray-200 bg-white">
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                <div className="text-center space-y-3 p-8">
-                  <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-primary"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
-                      />
-                    </svg>
-                  </div>
-                  <p className="text-gray-600 font-medium">Product Screenshot</p>
-                  <p className="text-sm text-gray-500">Dashboard mockup coming soon</p>
-                </div>
-              </div>
+              <img
+                src="/hero_screenshot.png"
+                alt="SEO Lens Dashboard Screenshot"
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
         </div>
