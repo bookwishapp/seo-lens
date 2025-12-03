@@ -1,37 +1,35 @@
 #!/bin/bash
 set -e
 
-# Install Next.js dependencies
-cd apps/web
-npm install
-cd ../..
+# Get absolute paths
+PROJECT_ROOT=$(pwd)
+FLUTTER_SDK="$PROJECT_ROOT/../flutter"
 
-# Get the project directory name dynamically
-PROJECT_DIR=$(basename "$PWD")
+# Install Next.js dependencies
+cd "$PROJECT_ROOT/apps/web"
+npm install
 
 # Clone or update Flutter SDK (parallel to project directory)
-if [ -d "../flutter/.git" ]; then
+if [ -d "$FLUTTER_SDK/.git" ]; then
   echo "Updating existing Flutter SDK..."
-  cd ../flutter
+  cd "$FLUTTER_SDK"
   git pull
-  cd ../$PROJECT_DIR
-elif [ -d "../flutter" ]; then
+elif [ -d "$FLUTTER_SDK" ]; then
   echo "Removing incomplete Flutter directory..."
-  cd ..
-  rm -rf flutter
+  rm -rf "$FLUTTER_SDK"
   echo "Cloning fresh Flutter SDK..."
+  cd "$(dirname "$FLUTTER_SDK")"
   git clone https://github.com/flutter/flutter.git flutter
-  cd $PROJECT_DIR
 else
   echo "Cloning Flutter SDK..."
-  cd ..
+  cd "$(dirname "$FLUTTER_SDK")"
   git clone https://github.com/flutter/flutter.git flutter
-  cd $PROJECT_DIR
 fi
 
 # Verify Flutter installation
-../flutter/bin/flutter doctor
+cd "$PROJECT_ROOT"
+"$FLUTTER_SDK/bin/flutter" doctor
 
 # Install Flutter dependencies
-cd apps/flutter
-../../flutter/bin/flutter pub get
+cd "$PROJECT_ROOT/apps/flutter"
+"$FLUTTER_SDK/bin/flutter" pub get
