@@ -22,7 +22,8 @@ class ReferralService {
   static String? _pendingReferralCode;
 
   /// Get the base URL for referral links
-  static const String _baseReferralUrl = 'https://seolens.io/app#/signup?ref=';
+  /// Points to the marketing site so users can see features and pricing first
+  static const String _baseReferralUrl = 'https://seolens.io?ref=';
 
   /// Capture the referral code from the current URL
   ///

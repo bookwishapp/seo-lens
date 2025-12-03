@@ -1,5 +1,8 @@
+'use client'
+
 import Image from 'next/image'
 import Link from 'next/link'
+import { useReferral } from './ReferralProvider'
 
 // Logo component
 function Logo() {
@@ -18,6 +21,8 @@ function Logo() {
 }
 
 export function HeroSection() {
+  const { getAppUrl } = useReferral()
+
   return (
     <header className="bg-gradient-to-b from-slate-50 to-white">
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
@@ -123,13 +128,13 @@ export function HeroSection() {
             {/* CTAs */}
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href="/app"
+                href={getAppUrl()}
                 className="btn-primary"
               >
                 Scan my domains
               </Link>
               <Link
-                href="/app"
+                href={getAppUrl()}
                 className="btn-secondary"
               >
                 View live demo

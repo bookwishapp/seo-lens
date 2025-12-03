@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import Link from 'next/link'
+import { useReferral } from './ReferralProvider'
 
 interface PricingPlan {
   name: string
@@ -103,6 +104,14 @@ interface PricingCardProps {
 
 function PricingCard({ plan }: PricingCardProps): React.JSX.Element {
   const [showModal, setShowModal] = useState(false)
+  const { referralCode, getAppUrl } = useReferral()
+
+  // Helper to append ref param to any URL
+  const appendRef = (url: string) => {
+    if (!referralCode) return url
+    const separator = url.includes('?') ? '&' : '?'
+    return `${url}${separator}ref=${referralCode}`
+  }
 
   const handleCTAClick = (e: React.MouseEvent) => {
     if (plan.ctaOptions) {
@@ -169,7 +178,7 @@ function PricingCard({ plan }: PricingCardProps): React.JSX.Element {
         {/* CTA button */}
         {plan.ctaHref ? (
           <Link
-            href={plan.ctaHref}
+            href={plan.ctaHref === '/app' ? getAppUrl() : appendRef(plan.ctaHref)}
             className={`block text-center py-3 px-6 rounded-lg font-semibold transition-colors ${
               plan.highlighted
                 ? 'bg-primary text-white hover:bg-primary/90'
@@ -209,7 +218,7 @@ function PricingCard({ plan }: PricingCardProps): React.JSX.Element {
               {plan.ctaOptions.map((option, idx) => (
                 <Link
                   key={idx}
-                  href={option.href}
+                  href={appendRef(option.href)}
                   className="block w-full text-center py-3 px-6 rounded-lg font-semibold transition-colors bg-primary text-white hover:bg-primary/90"
                 >
                   {option.label}

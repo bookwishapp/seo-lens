@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const plan = searchParams.get('plan') as keyof typeof PLAN_CONFIG
+    const ref = searchParams.get('ref')
 
     if (!plan || !PLAN_CONFIG[plan]) {
       return NextResponse.json(
@@ -40,8 +41,10 @@ export async function GET(request: NextRequest) {
     const config = PLAN_CONFIG[plan]
 
     // Build success and cancel URLs for Stripe (hardcoded for reliability)
-    const successUrl = `${APP_URL}#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
-    const cancelUrl = `${APP_URL}#/checkout/canceled`
+    // Pass through ref param if present for referral tracking
+    const refParam = ref ? `&ref=${encodeURIComponent(ref)}` : ''
+    const successUrl = `${APP_URL}#/checkout/success?session_id={CHECKOUT_SESSION_ID}${refParam}`
+    const cancelUrl = `${APP_URL}#/checkout/canceled${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`
 
     console.log('Creating checkout session:', { plan, successUrl, cancelUrl })
 

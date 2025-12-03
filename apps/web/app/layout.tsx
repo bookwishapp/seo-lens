@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Navbar } from '@/components/Navbar'
+import { ReferralProvider } from '@/components/ReferralProvider'
 import './globals.css'
 
 const inter = Inter({
@@ -44,8 +45,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className={`${inter.className} antialiased`}>
-        <Navbar />
-        {children}
+        <ReferralProvider>
+          <Navbar />
+          {children}
+        </ReferralProvider>
       </body>
     </html>
   )
