@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/providers.dart';
 
 /// Screen shown when user cancels Stripe checkout
 class CheckoutCanceledScreen extends ConsumerWidget {
@@ -8,6 +9,7 @@ class CheckoutCanceledScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pendingPlan = ref.watch(pendingUpgradePlanProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Checkout Canceled'),
@@ -40,7 +42,13 @@ class CheckoutCanceledScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 32),
                 FilledButton.icon(
-                  onPressed: () => context.go('/settings'),
+                  onPressed: () {
+                    if (pendingPlan != null) {
+                      context.go('/upgrade?plan=$pendingPlan');
+                    } else {
+                      context.go('/settings');
+                    }
+                  },
                   icon: const Icon(Icons.upgrade),
                   label: const Text('Try Again'),
                 ),

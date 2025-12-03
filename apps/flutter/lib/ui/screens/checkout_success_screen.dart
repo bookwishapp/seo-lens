@@ -12,26 +12,41 @@ class CheckoutSuccessScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
+  bool _isNewUser = false;
+  bool _isChecking = true;
+
   @override
   void initState() {
     super.initState();
-    // Invalidate profile to refresh plan information
     Future.delayed(Duration.zero, () {
+      // Clear pending upgrade plan now that checkout succeeded
+      ref.read(pendingUpgradePlanProvider.notifier).state = null;
       ref.invalidate(currentProfileProvider);
       _checkOnboardingStatus();
     });
   }
 
   Future<void> _checkOnboardingStatus() async {
-    // Wait a moment for profile to refresh
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Check if user has domains
     final domains = await ref.read(domainsProvider.future);
 
-    if (mounted && domains.isEmpty) {
-      // New user - redirect to onboarding
-      context.go('/onboarding');
+    if (mounted) {
+      if (domains.isEmpty) {
+        setState(() {
+          _isNewUser = true;
+          _isChecking = false;
+        });
+        // Auto-redirect new users to onboarding after showing success briefly
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          context.go('/onboarding');
+        }
+      } else {
+        setState(() {
+          _isChecking = false;
+        });
+      }
     }
   }
 
@@ -68,17 +83,26 @@ class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-                FilledButton.icon(
-                  onPressed: () => context.go('/settings'),
-                  icon: const Icon(Icons.settings),
-                  label: const Text('View Plan Details'),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => context.go('/home'),
-                  icon: const Icon(Icons.home),
-                  label: const Text('Go to Dashboard'),
-                ),
+                if (_isChecking)
+                  const CircularProgressIndicator()
+                else if (_isNewUser)
+                  const Text(
+                    'Redirecting to setup...',
+                    style: TextStyle(color: Colors.grey),
+                  )
+                else ...[
+                  FilledButton.icon(
+                    onPressed: () => context.go('/settings'),
+                    icon: const Icon(Icons.settings),
+                    label: const Text('View Plan Details'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go('/home'),
+                    icon: const Icon(Icons.home),
+                    label: const Text('Go to Dashboard'),
+                  ),
+                ],
               ],
             ),
           ),

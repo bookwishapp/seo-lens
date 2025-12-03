@@ -20,16 +20,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _isLogin = true;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _hasReadUpgradeParam = false;
 
   @override
   void initState() {
     super.initState();
-    // Store upgrade parameter in provider so it persists across navigation
-    final upgradeParam = GoRouterState.of(context).uri.queryParameters['upgrade'];
-    if (upgradeParam != null) {
-      Future.microtask(() {
-        ref.read(pendingUpgradePlanProvider.notifier).state = upgradeParam;
-      });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_hasReadUpgradeParam) {
+      _hasReadUpgradeParam = true;
+      final upgradeParam = GoRouterState.of(context).uri.queryParameters['upgrade'];
+      if (upgradeParam != null) {
+        Future.microtask(() {
+          ref.read(pendingUpgradePlanProvider.notifier).state = upgradeParam;
+        });
+      }
     }
   }
 

@@ -21,10 +21,6 @@ class _UpgradeScreenState extends ConsumerState<UpgradeScreen> {
   @override
   void initState() {
     super.initState();
-    // Clear pending upgrade plan since we're now on the upgrade screen
-    Future.microtask(() {
-      ref.read(pendingUpgradePlanProvider.notifier).state = null;
-    });
     _handleCheckout();
   }
 

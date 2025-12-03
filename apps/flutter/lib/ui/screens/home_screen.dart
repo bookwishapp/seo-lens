@@ -4,11 +4,38 @@ import 'package:go_router/go_router.dart';
 import '../../data/providers.dart';
 
 /// Home dashboard screen
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _hasCheckedDomains = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDomains();
+  }
+
+  Future<void> _checkDomains() async {
+    if (_hasCheckedDomains) return;
+    _hasCheckedDomains = true;
+
+    try {
+      final domains = await ref.read(domainsProvider.future);
+      if (mounted && domains.isEmpty) {
+        context.go('/onboarding');
+      }
+    } catch (e) {
+      // Ignore errors, let user stay on home
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final statsAsync = ref.watch(domainStatsProvider);
     final suggestionCountsAsync = ref.watch(suggestionCountsProvider);
 
