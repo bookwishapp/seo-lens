@@ -45,7 +45,7 @@ const plans: PricingPlan[] = [
       'Redirect plan with provider-specific setup tips',
     ],
     ctaText: 'Upgrade to Pro',
-    ctaHref: '/app',
+    ctaHref: '/api/checkout?plan=pro-monthly',
     highlighted: true,
   },
   {
@@ -59,7 +59,7 @@ const plans: PricingPlan[] = [
       'Includes future improvements to the Pro feature set',
     ],
     ctaText: 'Get lifetime access',
-    ctaHref: '/app',
+    ctaHref: '/api/checkout?plan=lifetime',
   },
 ]
 
