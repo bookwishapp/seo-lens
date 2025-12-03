@@ -81,6 +81,12 @@ class BillingService {
     try {
       final priceInfo = getPriceInfo(plan);
 
+      // Build success and cancel URLs based on current window location
+      // This allows the checkout to work from any deployment URL
+      final origin = kIsWeb ? html.window.location.origin : '';
+      final successUrl = '$origin/#/checkout/success?session_id={CHECKOUT_SESSION_ID}';
+      final cancelUrl = '$origin/#/checkout/canceled';
+
       // Call the Edge Function to create a checkout session
       final response = await _client.functions.invoke(
         'create-checkout-session',
@@ -88,6 +94,8 @@ class BillingService {
           'price_id': priceInfo.priceId,
           'mode': priceInfo.mode,
           'interval': priceInfo.interval,
+          'success_url': successUrl,
+          'cancel_url': cancelUrl,
         },
       );
 

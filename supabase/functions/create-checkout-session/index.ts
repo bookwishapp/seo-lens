@@ -16,6 +16,8 @@ interface CheckoutRequest {
   price_id: string
   mode: 'subscription' | 'payment'
   interval: 'monthly' | 'yearly' | 'lifetime'
+  success_url?: string
+  cancel_url?: string
 }
 
 interface CheckoutResponse {
@@ -55,13 +57,8 @@ serve(async (req: Request): Promise<Response> => {
       )
     }
 
-    if (!frontendUrl) {
-      console.error('FRONTEND_URL not configured')
-      return new Response(
-        JSON.stringify({ error: 'Frontend URL not configured' } as ErrorResponse),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // FRONTEND_URL is optional now - client can pass success/cancel URLs directly
+    // Kept for backward compatibility
 
     // Initialize Stripe
     const stripe = new Stripe(stripeSecretKey, {
@@ -98,7 +95,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Parse the request body
     const body: CheckoutRequest = await req.json()
-    const { price_id, mode, interval } = body
+    const { price_id, mode, interval, success_url, cancel_url } = body
 
     // Validate the price_id and mode combination
     const validCombinations = [
@@ -163,8 +160,26 @@ serve(async (req: Request): Promise<Response> => {
 
     // Build success and cancel URLs
     // The success URL includes a session_id placeholder that Stripe will replace
-    const successUrl = `${frontendUrl}/#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
-    const cancelUrl = `${frontendUrl}/#/checkout/canceled`
+    // Use client-provided URLs if available, otherwise fall back to FRONTEND_URL env var
+    const finalSuccessUrl = success_url
+      ? success_url.replace('{CHECKOUT_SESSION_ID}', '{CHECKOUT_SESSION_ID}')
+      : frontendUrl
+        ? `${frontendUrl}/#/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+        : null
+
+    const finalCancelUrl = cancel_url
+      ? cancel_url
+      : frontendUrl
+        ? `${frontendUrl}/#/checkout/canceled`
+        : null
+
+    if (!finalSuccessUrl || !finalCancelUrl) {
+      console.error('No success or cancel URLs provided')
+      return new Response(
+        JSON.stringify({ error: 'Success and cancel URLs required' } as ErrorResponse),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Create the Checkout Session
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
@@ -176,8 +191,8 @@ serve(async (req: Request): Promise<Response> => {
           quantity: 1,
         },
       ],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
+      success_url: finalSuccessUrl,
+      cancel_url: finalCancelUrl,
       metadata: {
         supabase_user_id: user.id,
         interval: interval,
