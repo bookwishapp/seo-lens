@@ -46,12 +46,17 @@ class _MobileLayout extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'SEO Lens',
-          style: GoogleFonts.inter(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+        title: InkWell(
+          onTap: () {
+            context.go('/');
+          },
+          child: Text(
+            'SEO Lens',
+            style: GoogleFonts.inter(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
         ),
         centerTitle: false,
@@ -66,8 +71,8 @@ class _MobileLayout extends StatelessWidget {
         indicatorColor: _primaryBlue.withAlpha(50),
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home, color: _primaryBlue),
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: _primaryBlue),
             label: 'Home',
           ),
           NavigationDestination(
@@ -129,12 +134,17 @@ class _DesktopLayout extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'SEO Lens',
-          style: GoogleFonts.inter(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+        title: InkWell(
+          onTap: () {
+            context.go('/');
+          },
+          child: Text(
+            'SEO Lens',
+            style: GoogleFonts.inter(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
         ),
         centerTitle: false,
@@ -160,8 +170,8 @@ class _DesktopLayout extends StatelessWidget {
             ),
             destinations: const [
               NavigationRailDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home, color: _primaryBlue),
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard, color: _primaryBlue),
                 label: Text('Home'),
               ),
               NavigationRailDestination(
