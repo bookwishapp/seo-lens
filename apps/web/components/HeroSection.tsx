@@ -4,15 +4,15 @@ import Link from 'next/link'
 // Logo component
 function Logo() {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       <img
         src="/seo_lens_logo.svg"
         alt="SEO Lens Logo"
-        width={32}
-        height={32}
+        width={64}
+        height={64}
         className="flex-shrink-0"
       />
-      <span className="text-xl font-bold text-gray-900">SEO Lens</span>
+      <span className="text-2xl font-bold text-gray-900">SEO Lens</span>
     </div>
   )
 }
