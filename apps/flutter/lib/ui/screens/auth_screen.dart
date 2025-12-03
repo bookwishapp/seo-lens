@@ -46,22 +46,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
-
-        if (mounted) {
-          // If upgrade parameter exists, go to upgrade flow
-          if (upgradeParam != null) {
-            context.go('/upgrade?plan=$upgradeParam');
-            return;
-          }
-
-          // Otherwise check if user has domains - if not, go to onboarding
-          final domains = await ref.read(domainsProvider.future);
-          if (domains.isEmpty) {
-            context.go('/onboarding');
-          } else {
-            context.go('/home');
-          }
-        }
+        // Router will handle navigation based on upgrade param
       } else {
         final response = await authService.signUp(
           email: _emailController.text.trim(),
@@ -74,19 +59,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         if (mounted) {
           // Check if we got a session (no email confirmation required)
           if (response.session != null) {
-            // If upgrade parameter exists, go to upgrade flow immediately
-            if (upgradeParam != null) {
-              context.go('/upgrade?plan=$upgradeParam');
-              return;
-            }
-
-            // Otherwise proceed with normal flow
-            final domains = await ref.read(domainsProvider.future);
-            if (domains.isEmpty) {
-              context.go('/onboarding');
-            } else {
-              context.go('/home');
-            }
+            // Router will handle navigation based on upgrade param
+            // Just clear loading state
+            setState(() {
+              _isLoading = false;
+            });
           } else {
             // Email confirmation required
             setState(() {
