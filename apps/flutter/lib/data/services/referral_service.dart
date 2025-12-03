@@ -100,7 +100,7 @@ class ReferralService {
       final referrerResponse = await _client
           .from('profiles')
           .select('id')
-          .eq('referral_code', _pendingReferralCode)
+          .eq('referral_code', _pendingReferralCode!)
           .maybeSingle();
 
       if (referrerResponse == null) {
