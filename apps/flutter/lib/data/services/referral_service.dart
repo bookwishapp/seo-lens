@@ -29,12 +29,23 @@ class ReferralService {
   ///
   /// Call this early in app initialization (e.g., in main.dart or router setup)
   /// to capture the ?ref= parameter before navigation changes the URL.
+  /// Handles both regular query params and hash-based routing (e.g., #/path?ref=ABC)
   void captureReferralCodeFromUrl() {
     if (!kIsWeb) return;
 
     try {
-      final uri = Uri.parse(html.window.location.href);
-      final refCode = uri.queryParameters['ref'];
+      final href = html.window.location.href;
+      final uri = Uri.parse(href);
+      String? refCode = uri.queryParameters['ref'];
+
+      // Also check hash fragment for query params (Flutter web uses hash routing)
+      // URL might be: https://seolens.io/app#/signup?ref=ABC123
+      if (refCode == null && uri.fragment.isNotEmpty) {
+        final fragmentUri = Uri.tryParse('https://x/${uri.fragment}');
+        if (fragmentUri != null) {
+          refCode = fragmentUri.queryParameters['ref'];
+        }
+      }
 
       if (refCode != null && refCode.isNotEmpty) {
         _pendingReferralCode = refCode;

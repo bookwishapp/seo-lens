@@ -23,6 +23,9 @@ class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
     super.initState();
     Future.delayed(Duration.zero, () {
       ref.read(pendingUpgradePlanProvider.notifier).state = null;
+      // Capture referral code from URL before any redirects
+      // This ensures it's stored in localStorage for when user clicks magic link
+      ref.read(referralServiceProvider).captureReferralCodeFromUrl();
       _handleCheckoutSuccess();
     });
   }
