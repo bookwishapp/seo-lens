@@ -4,16 +4,39 @@ import 'package:go_router/go_router.dart';
 import '../../data/providers.dart';
 
 /// Screen shown after successful Stripe checkout
-class CheckoutSuccessScreen extends ConsumerWidget {
+class CheckoutSuccessScreen extends ConsumerStatefulWidget {
   const CheckoutSuccessScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CheckoutSuccessScreen> createState() => _CheckoutSuccessScreenState();
+}
+
+class _CheckoutSuccessScreenState extends ConsumerState<CheckoutSuccessScreen> {
+  @override
+  void initState() {
+    super.initState();
     // Invalidate profile to refresh plan information
     Future.delayed(Duration.zero, () {
       ref.invalidate(currentProfileProvider);
+      _checkOnboardingStatus();
     });
+  }
 
+  Future<void> _checkOnboardingStatus() async {
+    // Wait a moment for profile to refresh
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Check if user has domains
+    final domains = await ref.read(domainsProvider.future);
+
+    if (mounted && domains.isEmpty) {
+      // New user - redirect to onboarding
+      context.go('/onboarding');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Payment Successful'),
