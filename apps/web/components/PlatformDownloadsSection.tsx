@@ -14,7 +14,7 @@ function AndroidIcon({ size }: { size: number }): React.JSX.Element {
 
 export function PlatformDownloadsSection(): React.JSX.Element {
   const handleWebStart = (): void => {
-    window.location.href = 'https://app.seolens.io'
+    window.location.href = '/app'
   }
 
   return (

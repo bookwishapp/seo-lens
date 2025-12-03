@@ -112,13 +112,13 @@ export function HeroSection() {
             {/* CTAs */}
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href="https://app.seolens.io"
+                href="/app"
                 className="btn-primary"
               >
                 Scan my domains
               </Link>
               <Link
-                href="https://app.seolens.io"
+                href="/app"
                 className="btn-secondary"
               >
                 View live demo
