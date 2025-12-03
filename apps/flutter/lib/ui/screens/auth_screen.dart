@@ -78,7 +78,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
         if (mounted) {
           // Check if we got a session (no email confirmation required)
-          if (response.session != null) {
+          if (response.session != null && response.user != null) {
+            // Set referral attribution if there's a pending referral code
+            final referralService = ref.read(referralServiceProvider);
+            if (referralService.hasPendingReferral) {
+              await referralService.setReferralAttribution(response.user!.id);
+            }
+
             // Router will handle navigation based on upgrade param
             // Just clear loading state
             setState(() {

@@ -1,5 +1,5 @@
 // lib/data/models/profile.dart
-// User profile model with billing/plan information
+// User profile model with billing/plan information and referral tracking
 
 class Profile {
   final String id;
@@ -17,6 +17,16 @@ class Profile {
   final DateTime? planCurrentPeriodEnd;
   final DateTime planUpdatedAt;
 
+  // Referral program fields
+  final String? referralCode; // Unique code for this user's referral link (e.g., "SL-ABC123")
+  final String? referredBy; // Referral code of the user who referred this account
+  final DateTime? referredAt; // When this user signed up via referral link
+  final bool referralRewardGranted; // Whether this referred user has generated a reward
+  final int referralFreeMonthsEarned; // Total free months earned as a referrer (lifetime)
+  final int referralFreeMonthsThisYear; // Free months earned this calendar year
+  final int? referralYear; // Calendar year for referralFreeMonthsThisYear
+  final DateTime? referralFreeUntil; // Date until which user has free Pro from referrals
+
   Profile({
     required this.id,
     required this.createdAt,
@@ -30,6 +40,15 @@ class Profile {
     this.planStatus,
     this.planCurrentPeriodEnd,
     DateTime? planUpdatedAt,
+    // Referral fields
+    this.referralCode,
+    this.referredBy,
+    this.referredAt,
+    this.referralRewardGranted = false,
+    this.referralFreeMonthsEarned = 0,
+    this.referralFreeMonthsThisYear = 0,
+    this.referralYear,
+    this.referralFreeUntil,
   }) : planUpdatedAt = planUpdatedAt ?? DateTime.now();
 
   /// Check if user is on a paid plan (Pro or Lifetime)
@@ -72,6 +91,20 @@ class Profile {
     }
   }
 
+  /// Check if user has active referral free time
+  bool get hasReferralFreeTime =>
+      referralFreeUntil != null && referralFreeUntil!.isAfter(DateTime.now());
+
+  /// Get the user's referral link URL
+  String get referralLink =>
+      referralCode != null ? 'https://seolens.io/app#/signup?ref=$referralCode' : '';
+
+  /// Check if user can still earn referral rewards this year (under 6 cap)
+  bool get canEarnMoreReferrals => referralFreeMonthsThisYear < 6;
+
+  /// Get remaining referral slots this year
+  int get remainingReferralSlots => 6 - referralFreeMonthsThisYear;
+
   factory Profile.fromJson(Map<String, dynamic> json) {
     return Profile(
       id: json['id'] as String,
@@ -90,6 +123,19 @@ class Profile {
       planUpdatedAt: json['plan_updated_at'] != null
           ? DateTime.parse(json['plan_updated_at'] as String)
           : DateTime.now(),
+      // Referral fields
+      referralCode: json['referral_code'] as String?,
+      referredBy: json['referred_by'] as String?,
+      referredAt: json['referred_at'] != null
+          ? DateTime.parse(json['referred_at'] as String)
+          : null,
+      referralRewardGranted: json['referral_reward_granted'] as bool? ?? false,
+      referralFreeMonthsEarned: json['referral_free_months_earned'] as int? ?? 0,
+      referralFreeMonthsThisYear: json['referral_free_months_this_year'] as int? ?? 0,
+      referralYear: json['referral_year'] as int?,
+      referralFreeUntil: json['referral_free_until'] != null
+          ? DateTime.parse(json['referral_free_until'] as String)
+          : null,
     );
   }
 
@@ -107,6 +153,15 @@ class Profile {
       'plan_status': planStatus,
       'plan_current_period_end': planCurrentPeriodEnd?.toIso8601String(),
       'plan_updated_at': planUpdatedAt.toIso8601String(),
+      // Referral fields
+      'referral_code': referralCode,
+      'referred_by': referredBy,
+      'referred_at': referredAt?.toIso8601String(),
+      'referral_reward_granted': referralRewardGranted,
+      'referral_free_months_earned': referralFreeMonthsEarned,
+      'referral_free_months_this_year': referralFreeMonthsThisYear,
+      'referral_year': referralYear,
+      'referral_free_until': referralFreeUntil?.toIso8601String(),
     };
   }
 
@@ -123,6 +178,15 @@ class Profile {
     String? planStatus,
     DateTime? planCurrentPeriodEnd,
     DateTime? planUpdatedAt,
+    // Referral fields
+    String? referralCode,
+    String? referredBy,
+    DateTime? referredAt,
+    bool? referralRewardGranted,
+    int? referralFreeMonthsEarned,
+    int? referralFreeMonthsThisYear,
+    int? referralYear,
+    DateTime? referralFreeUntil,
   }) {
     return Profile(
       id: id ?? this.id,
@@ -138,6 +202,15 @@ class Profile {
       planStatus: planStatus ?? this.planStatus,
       planCurrentPeriodEnd: planCurrentPeriodEnd ?? this.planCurrentPeriodEnd,
       planUpdatedAt: planUpdatedAt ?? this.planUpdatedAt,
+      // Referral fields
+      referralCode: referralCode ?? this.referralCode,
+      referredBy: referredBy ?? this.referredBy,
+      referredAt: referredAt ?? this.referredAt,
+      referralRewardGranted: referralRewardGranted ?? this.referralRewardGranted,
+      referralFreeMonthsEarned: referralFreeMonthsEarned ?? this.referralFreeMonthsEarned,
+      referralFreeMonthsThisYear: referralFreeMonthsThisYear ?? this.referralFreeMonthsThisYear,
+      referralYear: referralYear ?? this.referralYear,
+      referralFreeUntil: referralFreeUntil ?? this.referralFreeUntil,
     );
   }
 }

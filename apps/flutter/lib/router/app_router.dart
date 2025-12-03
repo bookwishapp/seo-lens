@@ -8,6 +8,7 @@ import '../ui/screens/domain_detail_screen.dart';
 import '../ui/screens/domains_screen.dart';
 import '../ui/screens/home_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
+import '../ui/screens/referral_screen.dart';
 import '../ui/screens/settings_screen.dart';
 import '../ui/screens/suggestions_screen.dart';
 import '../ui/screens/upgrade_screen.dart';
@@ -17,6 +18,10 @@ import '../ui/widgets/app_shell.dart';
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
   final pendingUpgradePlan = ref.watch(pendingUpgradePlanProvider);
+  final referralService = ref.watch(referralServiceProvider);
+
+  // Capture referral code from URL on initial load
+  referralService.captureReferralCodeFromUrl();
 
   return GoRouter(
     initialLocation: '/auth',
@@ -28,20 +33,40 @@ final routerProvider = Provider<GoRouter>((ref) {
       );
 
       final isAuthRoute = state.matchedLocation == '/auth';
+      final isSignupRoute = state.matchedLocation == '/signup';
       final isUpgradeRoute = state.matchedLocation == '/upgrade';
 
       // Check for upgrade param: provider first (persists), then URL
       final upgradeParam = pendingUpgradePlan ?? state.uri.queryParameters['upgrade'];
       final planParam = state.uri.queryParameters['plan'];
 
+      // Capture referral code from URL parameter (for signup links)
+      final refParam = state.uri.queryParameters['ref'];
+      if (refParam != null && refParam.isNotEmpty) {
+        // Re-capture in case it wasn't caught initially
+        referralService.captureReferralCodeFromUrl();
+      }
+
       // Not authenticated and trying to access protected route
-      if (!isAuthenticated && !isAuthRoute) {
+      if (!isAuthenticated && !isAuthRoute && !isSignupRoute) {
         // Preserve upgrade/plan parameter when redirecting to auth
         if (isUpgradeRoute && planParam != null) {
           return '/auth?upgrade=$planParam';
         }
         if (upgradeParam != null) {
           return '/auth?upgrade=$upgradeParam';
+        }
+        // Preserve ref parameter if present
+        if (refParam != null) {
+          return '/auth?ref=$refParam';
+        }
+        return '/auth';
+      }
+
+      // Handle /signup redirect to /auth with ref param preserved
+      if (isSignupRoute) {
+        if (refParam != null) {
+          return '/auth?ref=$refParam';
         }
         return '/auth';
       }
@@ -65,6 +90,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth',
         name: 'auth',
+        builder: (context, state) => const AuthScreen(),
+      ),
+
+      // Signup route (redirects to auth with ref param)
+      GoRoute(
+        path: '/signup',
+        name: 'signup',
+        redirect: (context, state) {
+          final refParam = state.uri.queryParameters['ref'];
+          if (refParam != null) {
+            return '/auth?ref=$refParam';
+          }
+          return '/auth';
+        },
         builder: (context, state) => const AuthScreen(),
       ),
 
@@ -127,6 +166,16 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => NoTransitionPage(
               key: state.pageKey,
               child: const SettingsScreen(),
+            ),
+          ),
+
+          // Referral program
+          GoRoute(
+            path: '/referral',
+            name: 'referral',
+            pageBuilder: (context, state) => NoTransitionPage(
+              key: state.pageKey,
+              child: const ReferralScreen(),
             ),
           ),
 

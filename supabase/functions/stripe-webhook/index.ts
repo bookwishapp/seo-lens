@@ -12,6 +12,12 @@
 // - customer.subscription.updated
 // - customer.subscription.deleted
 // - invoice.paid (optional)
+//
+// Referral Program:
+// - When a referred user subscribes to Pro within 90 days of signup,
+//   the referrer gets 1 free month of Pro
+// - Max 6 free months per referrer per calendar year
+// - Anti-gaming: same stripe_customer_id = no reward
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
@@ -261,6 +267,9 @@ async function handleCheckoutCompleted(
 
     console.log('Profile updated to Pro plan for user:', supabaseUserId)
 
+    // Process referral reward for Pro subscriptions
+    await processReferralReward(supabase, supabaseUserId, stripeCustomerId)
+
   } else if (session.mode === 'payment') {
     // Handle Lifetime one-time payment
     const paymentIntentId = typeof session.payment_intent === 'string'
@@ -414,5 +423,216 @@ async function handleSubscriptionDeleted(
     console.error('Failed to downgrade profile on subscription deletion:', error)
   } else {
     console.log('Profile downgraded to Free for user:', profile.id)
+  }
+}
+
+/**
+ * Process referral reward when a referred user subscribes to Pro
+ *
+ * Rules:
+ * - Referred user must have signed up via referral link (referred_by is set)
+ * - Must be within 90 days of signup (referred_at)
+ * - Must be their first Pro subscription (referral_reward_granted is false)
+ * - Anti-gaming: referrer and referred cannot share same stripe_customer_id
+ * - Cap: max 6 free months per referrer per calendar year
+ */
+async function processReferralReward(
+  supabase: ReturnType<typeof createClient>,
+  referredUserId: string,
+  referredStripeCustomerId: string | undefined
+): Promise<void> {
+  console.log('Processing referral reward for user:', referredUserId)
+
+  try {
+    // Fetch the referred user's profile with referral info
+    const { data: referredProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id, referred_by, referred_at, referral_reward_granted, stripe_customer_id')
+      .eq('id', referredUserId)
+      .single()
+
+    if (fetchError || !referredProfile) {
+      console.log('Could not fetch referred profile:', fetchError?.message)
+      return
+    }
+
+    // Check 1: Was this user referred?
+    if (!referredProfile.referred_by) {
+      console.log('User was not referred, skipping reward')
+      return
+    }
+
+    // Check 2: Has reward already been granted for this referred user?
+    if (referredProfile.referral_reward_granted) {
+      console.log('Referral reward already granted for this user, skipping')
+      return
+    }
+
+    // Check 3: Is the subscription within 90 days of signup?
+    if (!referredProfile.referred_at) {
+      console.log('No referred_at timestamp, skipping reward')
+      return
+    }
+
+    const referredAt = new Date(referredProfile.referred_at)
+    const now = new Date()
+    const daysSinceReferral = Math.floor((now.getTime() - referredAt.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (daysSinceReferral > 90) {
+      console.log(`Referral window expired: ${daysSinceReferral} days since signup (max 90)`)
+
+      // Log the expired referral event
+      await logReferralEvent(supabase, referredProfile.referred_by, referredUserId, 'reward_denied', {
+        reason: 'window_expired',
+        days_since_referral: daysSinceReferral,
+      })
+      return
+    }
+
+    // Find the referrer by their referral_code
+    const { data: referrerProfile, error: referrerError } = await supabase
+      .from('profiles')
+      .select('id, stripe_customer_id, referral_free_months_earned, referral_free_months_this_year, referral_year, referral_free_until')
+      .eq('referral_code', referredProfile.referred_by)
+      .single()
+
+    if (referrerError || !referrerProfile) {
+      console.log('Could not find referrer profile:', referrerError?.message)
+      return
+    }
+
+    // Check 4: Anti-gaming - same Stripe customer ID?
+    if (
+      referrerProfile.stripe_customer_id &&
+      referredStripeCustomerId &&
+      referrerProfile.stripe_customer_id === referredStripeCustomerId
+    ) {
+      console.log('Anti-gaming: referrer and referred share same Stripe customer ID, denying reward')
+
+      await logReferralEvent(supabase, referrerProfile.id, referredUserId, 'reward_denied', {
+        reason: 'same_stripe_customer',
+      })
+      return
+    }
+
+    // Check 5: Annual cap (max 6 free months per calendar year)
+    const currentYear = now.getFullYear()
+    let monthsThisYear = referrerProfile.referral_free_months_this_year || 0
+
+    // Reset counter if it's a new year
+    if (referrerProfile.referral_year !== currentYear) {
+      monthsThisYear = 0
+    }
+
+    if (monthsThisYear >= 6) {
+      console.log(`Referrer has reached annual cap: ${monthsThisYear}/6 months this year`)
+
+      await logReferralEvent(supabase, referrerProfile.id, referredUserId, 'reward_denied', {
+        reason: 'annual_cap_reached',
+        months_this_year: monthsThisYear,
+      })
+      return
+    }
+
+    // All checks passed! Grant the reward
+    console.log('Granting referral reward to referrer:', referrerProfile.id)
+
+    // Calculate new referral_free_until
+    const currentFreeUntil = referrerProfile.referral_free_until
+      ? new Date(referrerProfile.referral_free_until)
+      : null
+
+    // If they already have free time that extends past now, add to it
+    // Otherwise, start from now
+    const baseDate = currentFreeUntil && currentFreeUntil > now ? currentFreeUntil : now
+    const newFreeUntil = new Date(baseDate)
+    newFreeUntil.setMonth(newFreeUntil.getMonth() + 1)
+
+    // Update referrer's profile with the reward
+    const { error: updateReferrerError } = await supabase
+      .from('profiles')
+      .update({
+        referral_free_months_earned: (referrerProfile.referral_free_months_earned || 0) + 1,
+        referral_free_months_this_year: monthsThisYear + 1,
+        referral_year: currentYear,
+        referral_free_until: newFreeUntil.toISOString(),
+      })
+      .eq('id', referrerProfile.id)
+
+    if (updateReferrerError) {
+      console.error('Failed to update referrer profile:', updateReferrerError)
+      return
+    }
+
+    // Mark the referred user as having generated a reward
+    const { error: updateReferredError } = await supabase
+      .from('profiles')
+      .update({
+        referral_reward_granted: true,
+      })
+      .eq('id', referredUserId)
+
+    if (updateReferredError) {
+      console.error('Failed to update referred profile:', updateReferredError)
+      // Continue anyway - the referrer got their reward
+    }
+
+    // Log the successful reward
+    await logReferralEvent(supabase, referrerProfile.id, referredUserId, 'reward_granted', {
+      free_until: newFreeUntil.toISOString(),
+      months_earned_total: (referrerProfile.referral_free_months_earned || 0) + 1,
+      months_this_year: monthsThisYear + 1,
+    })
+
+    console.log(`Referral reward granted! Referrer ${referrerProfile.id} now has free Pro until ${newFreeUntil.toISOString()}`)
+
+  } catch (error) {
+    console.error('Error processing referral reward:', error)
+    // Don't throw - referral reward failure shouldn't fail the whole webhook
+  }
+}
+
+/**
+ * Log a referral event for tracking/debugging
+ */
+async function logReferralEvent(
+  supabase: ReturnType<typeof createClient>,
+  referrerId: string,
+  referredId: string,
+  eventType: string,
+  details: Record<string, unknown>
+): Promise<void> {
+  try {
+    // First, we need to get the referrer's user ID from their referral_code
+    // If referrerId is already a UUID, use it directly
+    let referrerUserId = referrerId
+
+    // Check if it looks like a referral code (starts with SL-)
+    if (referrerId.startsWith('SL-')) {
+      const { data: referrer } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('referral_code', referrerId)
+        .single()
+
+      if (referrer) {
+        referrerUserId = referrer.id
+      } else {
+        console.log('Could not find referrer for event logging:', referrerId)
+        return
+      }
+    }
+
+    await supabase
+      .from('referral_events')
+      .insert({
+        referrer_id: referrerUserId,
+        referred_id: referredId,
+        event_type: eventType,
+        details: details,
+      })
+  } catch (error) {
+    console.error('Failed to log referral event:', error)
+    // Don't throw - logging failure shouldn't affect main flow
   }
 }

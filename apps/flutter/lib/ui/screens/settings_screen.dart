@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../data/plan_limits.dart';
 import '../../data/providers.dart';
 import '../../data/services/billing_service.dart';
+import '../../data/models/profile.dart';
 
 /// Settings screen
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -100,6 +101,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Text('Error loading plan: $error'),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              // Referral section
+              Text(
+                'Referral Program',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              profileAsync.when(
+                data: (profile) => _ReferralCard(profile: profile),
+                loading: () => const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ),
+                error: (_, __) => const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text('Error loading referral info'),
                   ),
                 ),
               ),
@@ -671,6 +696,183 @@ class _UpgradeButton extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// Referral program card for settings
+class _ReferralCard extends ConsumerStatefulWidget {
+  final Profile? profile;
+
+  const _ReferralCard({required this.profile});
+
+  @override
+  ConsumerState<_ReferralCard> createState() => _ReferralCardState();
+}
+
+class _ReferralCardState extends ConsumerState<_ReferralCard> {
+  bool _copied = false;
+
+  Future<void> _copyLink() async {
+    if (widget.profile?.referralCode == null) return;
+
+    final referralService = ref.read(referralServiceProvider);
+    final success = await referralService.copyReferralLink(widget.profile!.referralCode!);
+
+    if (success && mounted) {
+      setState(() => _copied = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Referral link copied!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _copied = false);
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = widget.profile;
+
+    if (profile == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('Loading...'),
+        ),
+      );
+    }
+
+    final hasReferralCode = profile.referralCode != null;
+    final hasActiveFreeTime = profile.hasReferralFreeTime;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.card_giftcard,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Share SEO Lens, earn free months',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Get 1 free month of Pro when someone signs up with your link and upgrades to Pro within 90 days.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            if (hasReferralCode) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+
+              // Stats row
+              Row(
+                children: [
+                  _MiniStat(
+                    label: 'Earned',
+                    value: '${profile.referralFreeMonthsEarned} mo',
+                  ),
+                  const SizedBox(width: 24),
+                  _MiniStat(
+                    label: 'This year',
+                    value: '${profile.referralFreeMonthsThisYear}/6',
+                  ),
+                  if (hasActiveFreeTime) ...[
+                    const SizedBox(width: 24),
+                    _MiniStat(
+                      label: 'Free until',
+                      value: DateFormat.MMMd().format(profile.referralFreeUntil!),
+                      highlight: true,
+                    ),
+                  ],
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _copyLink,
+                      icon: Icon(_copied ? Icons.check : Icons.copy, size: 18),
+                      label: Text(_copied ? 'Copied!' : 'Copy link'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () => context.push('/referral'),
+                    child: const Text('View details'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool highlight;
+
+  const _MiniStat({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey[600],
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: highlight ? Colors.green : null,
+          ),
+        ),
       ],
     );
   }

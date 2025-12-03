@@ -9,6 +9,7 @@ import 'models/suggestion.dart';
 import 'services/auth_service.dart';
 import 'services/billing_service.dart';
 import 'services/domain_service.dart';
+import 'services/referral_service.dart';
 import 'services/scan_service.dart';
 import 'services/suggestion_service.dart';
 
@@ -28,6 +29,9 @@ final suggestionServiceProvider =
     Provider<SuggestionService>((ref) => SuggestionService());
 
 final scanServiceProvider = Provider<ScanService>((ref) => ScanService());
+
+final referralServiceProvider =
+    Provider<ReferralService>((ref) => ReferralService());
 
 // ============================================================================
 // AUTH PROVIDERS
@@ -164,3 +168,16 @@ final domainStatusFilterProvider = StateProvider<String?>((ref) => null);
 
 /// Selected suggestion filter
 final suggestionFilterProvider = StateProvider<String?>((ref) => null);
+
+// ============================================================================
+// REFERRAL PROVIDERS
+// ============================================================================
+
+/// Successful referral count for current user
+final referralCountProvider = FutureProvider<int>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return 0;
+
+  final referralService = ref.watch(referralServiceProvider);
+  return referralService.getSuccessfulReferralCount(user.id);
+});
