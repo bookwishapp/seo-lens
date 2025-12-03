@@ -17,7 +17,30 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   int _currentPage = 0;
   bool _isScanning = false;
+  bool _isCheckingDomains = true;
   List<String> _addedDomains = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingDomains();
+  }
+
+  Future<void> _checkExistingDomains() async {
+    try {
+      final domains = await ref.read(domainsProvider.future);
+      if (mounted && domains.isNotEmpty) {
+        // User already has domains, skip onboarding
+        context.go('/home');
+        return;
+      }
+    } catch (e) {
+      // If there's an error, just proceed with onboarding
+    }
+    if (mounted) {
+      setState(() => _isCheckingDomains = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -90,6 +113,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isCheckingDomains) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Welcome to SEO Lens'),

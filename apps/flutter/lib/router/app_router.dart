@@ -27,12 +27,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       );
 
       final isAuthRoute = state.matchedLocation == '/auth';
-      final isOnboardingRoute = state.matchedLocation == '/onboarding';
+      final isUpgradeRoute = state.matchedLocation == '/upgrade';
+
+      // Check for upgrade param (on /auth) or plan param (on /upgrade)
       final upgradeParam = state.uri.queryParameters['upgrade'];
+      final planParam = state.uri.queryParameters['plan'];
 
       // Not authenticated and trying to access protected route
       if (!isAuthenticated && !isAuthRoute) {
-        // Preserve upgrade parameter when redirecting to auth
+        // Preserve upgrade/plan parameter when redirecting to auth
+        if (isUpgradeRoute && planParam != null) {
+          return '/auth?upgrade=$planParam';
+        }
         if (upgradeParam != null) {
           return '/auth?upgrade=$upgradeParam';
         }
@@ -45,7 +51,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (upgradeParam != null) {
           return '/upgrade?plan=$upgradeParam';
         }
-        return '/home';
+        // Redirect to onboarding - it will check if user has domains
+        // and redirect to /home if they do
+        return '/onboarding';
       }
 
       // No redirect needed
