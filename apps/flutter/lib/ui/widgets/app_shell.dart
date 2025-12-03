@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 // Brand color from landing page
@@ -47,15 +48,10 @@ class _MobileLayout extends StatelessWidget {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.network(
-              'seo_lens_logo.svg',
+            SvgPicture.asset(
+              'assets/seo_lens_logo.svg',
               width: 32,
               height: 32,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.search,
-                color: Colors.white,
-                size: 28,
-              ),
             ),
             const SizedBox(width: 10),
             const Text(
@@ -144,15 +140,10 @@ class _DesktopLayout extends StatelessWidget {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.network(
-              'seo_lens_logo.svg',
+            SvgPicture.asset(
+              'assets/seo_lens_logo.svg',
               width: 32,
               height: 32,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.search,
-                color: Colors.white,
-                size: 28,
-              ),
             ),
             const SizedBox(width: 10),
             const Text(
@@ -178,23 +169,10 @@ class _DesktopLayout extends StatelessWidget {
             indicatorColor: _primaryBlue.withAlpha(50),
             leading: Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Image.network(
-                'seo_lens_logo.svg',
+              child: SvgPicture.asset(
+                'assets/seo_lens_logo.svg',
                 width: 48,
                 height: 48,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: _primaryBlue.withAlpha(25),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.search,
-                    color: _primaryBlue,
-                    size: 28,
-                  ),
-                ),
               ),
             ),
             destinations: const [
