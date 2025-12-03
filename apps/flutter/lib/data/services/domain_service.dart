@@ -80,22 +80,115 @@ class DomainService {
     String? registrarName,
     DateTime? expiryDate,
     String? notes,
+    String? preferredUrl,
+    String? preferredRedirectProvider,
+  }) async {
+    final updateData = <String, dynamic>{};
+    if (label != null) updateData['label'] = label;
+    if (projectTag != null) updateData['project_tag'] = projectTag;
+    if (registrarName != null) updateData['registrar_name'] = registrarName;
+    if (expiryDate != null) {
+      updateData['expiry_date'] = expiryDate.toIso8601String().split('T')[0];
+    }
+    if (notes != null) updateData['notes'] = notes;
+    if (preferredUrl != null) updateData['preferred_url'] = preferredUrl;
+    if (preferredRedirectProvider != null) {
+      updateData['preferred_redirect_provider'] = preferredRedirectProvider;
+    }
+
+    final response = await _client
+        .from('domains')
+        .update(updateData)
+        .eq('id', domainId)
+        .select()
+        .single();
+
+    return Domain.fromJson(response);
+  }
+
+  /// Update redirect preferences for a domain
+  Future<Domain> updateRedirectPreferences({
+    required String domainId,
+    required String? preferredUrl,
+    required String? preferredRedirectProvider,
   }) async {
     final response = await _client
         .from('domains')
         .update({
-          if (label != null) 'label': label,
-          if (projectTag != null) 'project_tag': projectTag,
-          if (registrarName != null) 'registrar_name': registrarName,
-          if (expiryDate != null)
-            'expiry_date': expiryDate.toIso8601String().split('T')[0],
-          if (notes != null) 'notes': notes,
+          'preferred_url': preferredUrl,
+          'preferred_redirect_provider': preferredRedirectProvider,
         })
         .eq('id', domainId)
         .select()
         .single();
 
     return Domain.fromJson(response);
+  }
+
+  /// Update domain info (registrar and expiry) manually
+  Future<Domain> updateDomainInfo({
+    required String domainId,
+    String? registrarName,
+    DateTime? expiryDate,
+  }) async {
+    final updateData = <String, dynamic>{};
+    if (registrarName != null) updateData['registrar_name'] = registrarName;
+    if (expiryDate != null) {
+      updateData['expiry_date'] = expiryDate.toIso8601String().split('T')[0];
+    }
+
+    final response = await _client
+        .from('domains')
+        .update(updateData)
+        .eq('id', domainId)
+        .select()
+        .single();
+
+    return Domain.fromJson(response);
+  }
+
+  /// Fetch WHOIS data for a domain via Edge Function
+  Future<WhoisResult> fetchWhoisData(String domainId) async {
+    try {
+      final response = await _client.functions.invoke(
+        'fetch-domain-whois',
+        body: {'domain_id': domainId},
+      );
+
+      if (response.status != 200) {
+        return WhoisResult(
+          success: false,
+          message: 'WHOIS lookup failed',
+        );
+      }
+
+      final data = response.data as Map<String, dynamic>;
+      final status = data['status'] as String?;
+
+      if (status == 'error') {
+        return WhoisResult(
+          success: false,
+          message: data['message'] as String? ?? 'WHOIS lookup failed',
+        );
+      }
+
+      return WhoisResult(
+        success: true,
+        expiryDate: data['expiry_date'] != null
+            ? DateTime.parse(data['expiry_date'] as String)
+            : null,
+        registrarName: data['registrar_name'] as String?,
+        status: status,
+        message: status == 'partial'
+            ? 'Some WHOIS data was not available'
+            : 'WHOIS data updated',
+      );
+    } catch (e) {
+      return WhoisResult(
+        success: false,
+        message: 'Failed to fetch WHOIS data: $e',
+      );
+    }
   }
 
   /// Delete a domain
@@ -221,4 +314,21 @@ class DomainService {
       'unknown': domains.length - (liveCount + redirectCount + brokenCount),
     };
   }
+}
+
+/// Result of a WHOIS lookup
+class WhoisResult {
+  final bool success;
+  final DateTime? expiryDate;
+  final String? registrarName;
+  final String? status;
+  final String? message;
+
+  WhoisResult({
+    required this.success,
+    this.expiryDate,
+    this.registrarName,
+    this.status,
+    this.message,
+  });
 }

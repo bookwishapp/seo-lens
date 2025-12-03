@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+// Brand color from landing page
+const Color _primaryBlue = Color(0xFF5F9DF7);
+
 /// App shell that provides navigation and layout
 ///
 /// Switches between mobile (bottom nav) and desktop (navigation rail) layouts
@@ -41,32 +44,57 @@ class _MobileLayout extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SEO Lens'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.network(
+              'seo_lens_logo.svg',
+              width: 32,
+              height: 32,
+              errorBuilder: (context, error, stackTrace) => const Icon(
+                Icons.search,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'SEO Lens',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: _primaryBlue,
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) => _onDestinationSelected(context, index),
+        indicatorColor: _primaryBlue.withAlpha(50),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
+            selectedIcon: Icon(Icons.home, color: _primaryBlue),
             label: 'Home',
           ),
           NavigationDestination(
             icon: Icon(Icons.language_outlined),
-            selectedIcon: Icon(Icons.language),
+            selectedIcon: Icon(Icons.language, color: _primaryBlue),
             label: 'Domains',
           ),
           NavigationDestination(
             icon: Icon(Icons.lightbulb_outline),
-            selectedIcon: Icon(Icons.lightbulb),
+            selectedIcon: Icon(Icons.lightbulb, color: _primaryBlue),
             label: 'Suggestions',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
+            selectedIcon: Icon(Icons.settings, color: _primaryBlue),
             label: 'Settings',
           ),
         ],
@@ -113,8 +141,32 @@ class _DesktopLayout extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SEO Lens'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.network(
+              'seo_lens_logo.svg',
+              width: 32,
+              height: 32,
+              errorBuilder: (context, error, stackTrace) => const Icon(
+                Icons.search,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'SEO Lens',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: _primaryBlue,
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: Row(
         children: [
@@ -123,25 +175,47 @@ class _DesktopLayout extends StatelessWidget {
             onDestinationSelected: (index) =>
                 _onDestinationSelected(context, index),
             labelType: NavigationRailLabelType.all,
+            indicatorColor: _primaryBlue.withAlpha(50),
+            leading: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Image.network(
+                'seo_lens_logo.svg',
+                width: 48,
+                height: 48,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _primaryBlue.withAlpha(25),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.search,
+                    color: _primaryBlue,
+                    size: 28,
+                  ),
+                ),
+              ),
+            ),
             destinations: const [
               NavigationRailDestination(
                 icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home),
+                selectedIcon: Icon(Icons.home, color: _primaryBlue),
                 label: Text('Home'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.language_outlined),
-                selectedIcon: Icon(Icons.language),
+                selectedIcon: Icon(Icons.language, color: _primaryBlue),
                 label: Text('Domains'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.lightbulb_outline),
-                selectedIcon: Icon(Icons.lightbulb),
+                selectedIcon: Icon(Icons.lightbulb, color: _primaryBlue),
                 label: Text('Suggestions'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
+                selectedIcon: Icon(Icons.settings, color: _primaryBlue),
                 label: Text('Settings'),
               ),
             ],

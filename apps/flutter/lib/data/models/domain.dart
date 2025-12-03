@@ -7,6 +7,8 @@ class Domain {
   final String? registrarName;
   final DateTime? expiryDate;
   final String? notes;
+  final String? preferredUrl;
+  final String? preferredRedirectProvider;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -19,6 +21,8 @@ class Domain {
     this.registrarName,
     this.expiryDate,
     this.notes,
+    this.preferredUrl,
+    this.preferredRedirectProvider,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -35,6 +39,8 @@ class Domain {
           ? DateTime.parse(json['expiry_date'] as String)
           : null,
       notes: json['notes'] as String?,
+      preferredUrl: json['preferred_url'] as String?,
+      preferredRedirectProvider: json['preferred_redirect_provider'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -50,6 +56,8 @@ class Domain {
       'registrar_name': registrarName,
       'expiry_date': expiryDate?.toIso8601String().split('T')[0],
       'notes': notes,
+      'preferred_url': preferredUrl,
+      'preferred_redirect_provider': preferredRedirectProvider,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -64,6 +72,8 @@ class Domain {
     String? registrarName,
     DateTime? expiryDate,
     String? notes,
+    String? preferredUrl,
+    String? preferredRedirectProvider,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -76,9 +86,24 @@ class Domain {
       registrarName: registrarName ?? this.registrarName,
       expiryDate: expiryDate ?? this.expiryDate,
       notes: notes ?? this.notes,
+      preferredUrl: preferredUrl ?? this.preferredUrl,
+      preferredRedirectProvider: preferredRedirectProvider ?? this.preferredRedirectProvider,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  /// Check if domain expiry is within the given number of days
+  bool expiresWithinDays(int days) {
+    if (expiryDate == null) return false;
+    final daysUntilExpiry = expiryDate!.difference(DateTime.now()).inDays;
+    return daysUntilExpiry >= 0 && daysUntilExpiry <= days;
+  }
+
+  /// Check if domain is expired
+  bool get isExpired {
+    if (expiryDate == null) return false;
+    return expiryDate!.isBefore(DateTime.now());
   }
 
   /// Helper to get the display name (label or domain name)

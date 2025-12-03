@@ -41,6 +41,8 @@ CREATE TABLE domains (
   registrar_name TEXT,
   expiry_date DATE,
   notes TEXT,
+  preferred_url TEXT,                    -- Target URL for redirect plan
+  preferred_redirect_provider TEXT,      -- Provider managing redirects (cloudflare, netlify, vercel, etc.)
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   UNIQUE(user_id, domain_name)
