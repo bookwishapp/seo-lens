@@ -45,7 +45,7 @@ const plans: PricingPlan[] = [
       'Expiration reminders (via Suggestions, email later)',
       'Redirect plan with provider-specific setup tips',
     ],
-    ctaText: 'Upgrade to Pro',
+    ctaText: 'Get Pro access',
     ctaOptions: [
       { label: 'Monthly ($2.99/mo)', href: '/api/checkout?plan=pro-monthly' },
       { label: 'Yearly ($19.99/yr - Save 44%)', href: '/api/checkout?plan=pro-yearly' },

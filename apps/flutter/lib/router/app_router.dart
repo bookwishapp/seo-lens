@@ -28,14 +28,23 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final isAuthRoute = state.matchedLocation == '/auth';
       final isOnboardingRoute = state.matchedLocation == '/onboarding';
+      final upgradeParam = state.uri.queryParameters['upgrade'];
 
       // Not authenticated and trying to access protected route
       if (!isAuthenticated && !isAuthRoute) {
+        // Preserve upgrade parameter when redirecting to auth
+        if (upgradeParam != null) {
+          return '/auth?upgrade=$upgradeParam';
+        }
         return '/auth';
       }
 
       // Authenticated and on auth screen
       if (isAuthenticated && isAuthRoute) {
+        // If there's an upgrade parameter, redirect to upgrade flow
+        if (upgradeParam != null) {
+          return '/upgrade?plan=$upgradeParam';
+        }
         return '/home';
       }
 

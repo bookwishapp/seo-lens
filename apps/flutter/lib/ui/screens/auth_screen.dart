@@ -39,6 +39,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     try {
       final authService = ref.read(authServiceProvider);
+      final upgradeParam = GoRouterState.of(context).uri.queryParameters['upgrade'];
 
       if (_isLogin) {
         await authService.signIn(
@@ -47,7 +48,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         );
 
         if (mounted) {
-          // Check if user has domains - if not, go to onboarding
+          // If upgrade parameter exists, go to upgrade flow
+          if (upgradeParam != null) {
+            context.go('/upgrade?plan=$upgradeParam');
+            return;
+          }
+
+          // Otherwise check if user has domains - if not, go to onboarding
           final domains = await ref.read(domainsProvider.future);
           if (domains.isEmpty) {
             context.go('/onboarding');
@@ -67,6 +74,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         if (mounted) {
           // Check if we got a session (no email confirmation required)
           if (response.session != null) {
+            // If upgrade parameter exists, go to upgrade flow immediately
+            if (upgradeParam != null) {
+              context.go('/upgrade?plan=$upgradeParam');
+              return;
+            }
+
+            // Otherwise proceed with normal flow
             final domains = await ref.read(domainsProvider.future);
             if (domains.isEmpty) {
               context.go('/onboarding');
@@ -74,12 +88,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               context.go('/home');
             }
           } else {
-            // Email confirmation required - show message
+            // Email confirmation required
             setState(() {
               _isLoading = false;
               _errorMessage = null;
             });
-            _showConfirmationDialog();
+            _showConfirmationDialog(upgradeParam);
           }
         }
       }
@@ -91,15 +105,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
-  void _showConfirmationDialog() {
+  void _showConfirmationDialog(String? upgradeParam) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Check your email'),
         content: Text(
-          'We sent a confirmation link to ${_emailController.text.trim()}. '
-          'Please click the link to verify your account, then come back and log in.',
+          upgradeParam != null
+              ? 'We sent a confirmation link to ${_emailController.text.trim()}. '
+                'Please click the link to verify your account and complete your subscription.'
+              : 'We sent a confirmation link to ${_emailController.text.trim()}. '
+                'Please click the link to verify your account, then come back and log in.',
         ),
         actions: [
           TextButton(
