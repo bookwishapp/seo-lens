@@ -91,8 +91,8 @@ serve(async (req) => {
     let status: 'ok' | 'partial' | 'not_found' | 'error' = 'not_found'
 
     try {
-      // Use rdap.org which routes to the appropriate RDAP server
-      const rdapUrl = `https://rdap.org/domain/${domainName}`
+      // Use rdap-bootstrap.arin.net which reliably routes to the appropriate RDAP server
+      const rdapUrl = `https://rdap-bootstrap.arin.net/bootstrap/domain/${domainName}`
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
@@ -109,7 +109,7 @@ serve(async (req) => {
       clearTimeout(timeoutId)
 
       if (!rdapResponse.ok) {
-        throw new Error(`RDAP request failed with status ${rdapResponse.status}`)
+        throw new Error(`RDAP request failed with status ${rdapResponse.status}: ${rdapResponse.statusText}`)
       }
 
       const rdapData = await rdapResponse.json()
