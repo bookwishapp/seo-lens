@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 
 interface PricingPlan {
@@ -10,7 +10,8 @@ interface PricingPlan {
   label: string
   features: string[]
   ctaText: string
-  ctaHref: string
+  ctaHref?: string
+  ctaOptions?: Array<{ label: string; href: string }>
   highlighted?: boolean
 }
 
@@ -45,7 +46,10 @@ const plans: PricingPlan[] = [
       'Redirect plan with provider-specific setup tips',
     ],
     ctaText: 'Upgrade to Pro',
-    ctaHref: '/api/checkout?plan=pro-monthly',
+    ctaOptions: [
+      { label: 'Monthly ($2.99/mo)', href: '/api/checkout?plan=pro-monthly' },
+      { label: 'Yearly ($19.99/yr - Save 44%)', href: '/api/checkout?plan=pro-yearly' },
+    ],
     highlighted: true,
   },
   {
@@ -98,71 +102,129 @@ interface PricingCardProps {
 }
 
 function PricingCard({ plan }: PricingCardProps): React.JSX.Element {
+  const [showModal, setShowModal] = useState(false)
+
+  const handleCTAClick = (e: React.MouseEvent) => {
+    if (plan.ctaOptions) {
+      e.preventDefault()
+      setShowModal(true)
+    }
+  }
+
   return (
-    <div
-      className={`bg-white rounded-2xl border-2 p-6 lg:p-8 flex flex-col ${
-        plan.highlighted
-          ? 'border-primary shadow-lg relative'
-          : 'border-slate-200'
-      }`}
-    >
-      {/* Popular badge */}
-      {plan.highlighted && (
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-          <span className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-md">
-            Most popular
-          </span>
+    <>
+      <div
+        className={`bg-white rounded-2xl border-2 p-6 lg:p-8 flex flex-col ${
+          plan.highlighted
+            ? 'border-primary shadow-lg relative'
+            : 'border-slate-200'
+        }`}
+      >
+        {/* Popular badge */}
+        {plan.highlighted && (
+          <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+            <span className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-md">
+              Most popular
+            </span>
+          </div>
+        )}
+
+        {/* Plan name */}
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+
+        {/* Label */}
+        <p className="text-sm text-gray-600 mb-4">{plan.label}</p>
+
+        {/* Price */}
+        <div className="mb-6">
+          <p className="text-3xl font-extrabold text-gray-900">{plan.price}</p>
+          {plan.priceSubtext && (
+            <p className="text-sm text-gray-500 mt-1">{plan.priceSubtext}</p>
+          )}
         </div>
-      )}
 
-      {/* Plan name */}
-      <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+        {/* Features */}
+        <ul className="space-y-3 mb-8 flex-grow">
+          {plan.features.map((feature, idx) => (
+            <li key={idx} className="flex items-start gap-2">
+              <svg
+                className="w-5 h-5 text-primary flex-shrink-0 mt-0.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <span className="text-sm text-gray-700">{feature}</span>
+            </li>
+          ))}
+        </ul>
 
-      {/* Label */}
-      <p className="text-sm text-gray-600 mb-4">{plan.label}</p>
-
-      {/* Price */}
-      <div className="mb-6">
-        <p className="text-3xl font-extrabold text-gray-900">{plan.price}</p>
-        {plan.priceSubtext && (
-          <p className="text-sm text-gray-500 mt-1">{plan.priceSubtext}</p>
+        {/* CTA button */}
+        {plan.ctaHref ? (
+          <Link
+            href={plan.ctaHref}
+            className={`block text-center py-3 px-6 rounded-lg font-semibold transition-colors ${
+              plan.highlighted
+                ? 'bg-primary text-white hover:bg-primary/90'
+                : 'bg-slate-100 text-gray-900 hover:bg-slate-200'
+            }`}
+          >
+            {plan.ctaText}
+          </Link>
+        ) : (
+          <button
+            onClick={handleCTAClick}
+            className={`block w-full text-center py-3 px-6 rounded-lg font-semibold transition-colors ${
+              plan.highlighted
+                ? 'bg-primary text-white hover:bg-primary/90'
+                : 'bg-slate-100 text-gray-900 hover:bg-slate-200'
+            }`}
+          >
+            {plan.ctaText}
+          </button>
         )}
       </div>
 
-      {/* Features */}
-      <ul className="space-y-3 mb-8 flex-grow">
-        {plan.features.map((feature, idx) => (
-          <li key={idx} className="flex items-start gap-2">
-            <svg
-              className="w-5 h-5 text-primary flex-shrink-0 mt-0.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
+      {/* Modal for plan options */}
+      {showModal && plan.ctaOptions && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-2xl font-bold text-gray-900 mb-4">
+              Choose your {plan.name} plan
+            </h3>
+            <div className="space-y-3">
+              {plan.ctaOptions.map((option, idx) => (
+                <Link
+                  key={idx}
+                  href={option.href}
+                  className="block w-full text-center py-3 px-6 rounded-lg font-semibold transition-colors bg-primary text-white hover:bg-primary/90"
+                >
+                  {option.label}
+                </Link>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowModal(false)}
+              className="mt-4 w-full text-center py-2 text-gray-600 hover:text-gray-900"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-            <span className="text-sm text-gray-700">{feature}</span>
-          </li>
-        ))}
-      </ul>
-
-      {/* CTA button */}
-      <Link
-        href={plan.ctaHref}
-        className={`block text-center py-3 px-6 rounded-lg font-semibold transition-colors ${
-          plan.highlighted
-            ? 'bg-primary text-white hover:bg-primary/90'
-            : 'bg-slate-100 text-gray-900 hover:bg-slate-200'
-        }`}
-      >
-        {plan.ctaText}
-      </Link>
-    </div>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
