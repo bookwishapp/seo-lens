@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import '../../data/models/domain.dart';
 import '../../data/models/domain_status.dart';
 import '../../data/models/site_page.dart';
+import '../../data/plan_limits.dart';
 import '../../data/providers.dart';
+import '../../data/services/billing_service.dart';
 
 /// Domain detail screen
 class DomainDetailScreen extends ConsumerStatefulWidget {
@@ -243,6 +245,18 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                 _scanDomain(maxPages: 10);
               }
 
+              // Get plan tier to check WHOIS access
+              final profileAsync = ref.watch(currentProfileProvider);
+              final planTier = profileAsync.maybeWhen(
+                data: (profile) => profile?.planTier ?? 'free',
+                orElse: () => 'free',
+              );
+              final whoisEnabled = canUseWhois(planTier);
+
+              Future<void> onWhoisUpgrade() async {
+                _showWhoisUpgradeDialog(context);
+              }
+
               if (isDesktop) {
                 return _DesktopLayout(
                   domain: domain,
@@ -250,6 +264,8 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                   pagesAsync: pagesAsync,
                   onNotesUpdated: onNotesUpdated,
                   onWhoisFetch: onWhoisFetch,
+                  onWhoisUpgrade: onWhoisUpgrade,
+                  whoisEnabled: whoisEnabled,
                   onDomainInfoUpdate: onDomainInfoUpdate,
                   onRedirectPlanUpdate: onRedirectPlanUpdate,
                   onRescan: onRescan,
@@ -261,6 +277,8 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
                   pagesAsync: pagesAsync,
                   onNotesUpdated: onNotesUpdated,
                   onWhoisFetch: onWhoisFetch,
+                  onWhoisUpgrade: onWhoisUpgrade,
+                  whoisEnabled: whoisEnabled,
                   onDomainInfoUpdate: onDomainInfoUpdate,
                   onRedirectPlanUpdate: onRedirectPlanUpdate,
                   onRescan: onRescan,
@@ -274,6 +292,174 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen> {
       ),
     );
   }
+
+  void _showWhoisUpgradeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.lock, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            const Text('Pro Feature'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'WHOIS lookups are a Pro feature.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Upgrade to automatically fetch registrar and expiry date information for your domains.',
+            ),
+            const SizedBox(height: 24),
+            _WhoisUpgradeOption(
+              title: 'Pro Monthly',
+              price: '\$2.99/month',
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await ref.read(billingServiceProvider).startCheckout(BillingPlan.proMonthly);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            _WhoisUpgradeOption(
+              title: 'Pro Yearly',
+              price: '\$19.99/year',
+              badge: 'Save 44%',
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await ref.read(billingServiceProvider).startCheckout(BillingPlan.proYearly);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            _WhoisUpgradeOption(
+              title: 'Lifetime',
+              price: '\$49.99 one-time',
+              badge: 'Best Value',
+              highlighted: true,
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await ref.read(billingServiceProvider).startCheckout(BillingPlan.lifetime);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Maybe Later'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WhoisUpgradeOption extends StatelessWidget {
+  final String title;
+  final String price;
+  final String? badge;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _WhoisUpgradeOption({
+    required this.title,
+    required this.price,
+    this.badge,
+    this.highlighted = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: highlighted
+          ? Theme.of(context).colorScheme.primaryContainer
+          : Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        if (badge != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              badge!,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onPrimary,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      price,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MobileLayout extends StatelessWidget {
@@ -282,6 +468,8 @@ class _MobileLayout extends StatelessWidget {
   final AsyncValue<List<SitePage>> pagesAsync;
   final Function(String) onNotesUpdated;
   final Future<void> Function() onWhoisFetch;
+  final Future<void> Function() onWhoisUpgrade;
+  final bool whoisEnabled;
   final Future<void> Function(String?, DateTime?) onDomainInfoUpdate;
   final Future<void> Function(String?, String?) onRedirectPlanUpdate;
   final VoidCallback onRescan;
@@ -292,6 +480,8 @@ class _MobileLayout extends StatelessWidget {
     required this.pagesAsync,
     required this.onNotesUpdated,
     required this.onWhoisFetch,
+    required this.onWhoisUpgrade,
+    required this.whoisEnabled,
     required this.onDomainInfoUpdate,
     required this.onRedirectPlanUpdate,
     required this.onRescan,
@@ -309,6 +499,8 @@ class _MobileLayout extends StatelessWidget {
           _DomainInfoSection(
             domain: domain,
             onWhoisFetch: onWhoisFetch,
+            onWhoisUpgrade: onWhoisUpgrade,
+            whoisEnabled: whoisEnabled,
             onManualUpdate: onDomainInfoUpdate,
           ),
           const SizedBox(height: 24),
@@ -336,6 +528,8 @@ class _DesktopLayout extends StatelessWidget {
   final AsyncValue<List<SitePage>> pagesAsync;
   final Function(String) onNotesUpdated;
   final Future<void> Function() onWhoisFetch;
+  final Future<void> Function() onWhoisUpgrade;
+  final bool whoisEnabled;
   final Future<void> Function(String?, DateTime?) onDomainInfoUpdate;
   final Future<void> Function(String?, String?) onRedirectPlanUpdate;
   final VoidCallback onRescan;
@@ -346,6 +540,8 @@ class _DesktopLayout extends StatelessWidget {
     required this.pagesAsync,
     required this.onNotesUpdated,
     required this.onWhoisFetch,
+    required this.onWhoisUpgrade,
+    required this.whoisEnabled,
     required this.onDomainInfoUpdate,
     required this.onRedirectPlanUpdate,
     required this.onRescan,
@@ -368,6 +564,8 @@ class _DesktopLayout extends StatelessWidget {
                 _DomainInfoSection(
                   domain: domain,
                   onWhoisFetch: onWhoisFetch,
+                  onWhoisUpgrade: onWhoisUpgrade,
+                  whoisEnabled: whoisEnabled,
                   onManualUpdate: onDomainInfoUpdate,
                 ),
                 const SizedBox(height: 24),
@@ -869,11 +1067,15 @@ class _NotesSectionState extends State<_NotesSection> {
 class _DomainInfoSection extends StatefulWidget {
   final Domain domain;
   final Future<void> Function() onWhoisFetch;
+  final Future<void> Function() onWhoisUpgrade;
+  final bool whoisEnabled;
   final Future<void> Function(String?, DateTime?) onManualUpdate;
 
   const _DomainInfoSection({
     required this.domain,
     required this.onWhoisFetch,
+    required this.onWhoisUpgrade,
+    required this.whoisEnabled,
     required this.onManualUpdate,
   });
 
@@ -1038,17 +1240,44 @@ class _DomainInfoSectionState extends State<_DomainInfoSection> {
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _fetchWhois,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh),
-                  label: Text(_isLoading ? 'Fetching...' : 'Fetch from WHOIS'),
-                ),
+                child: widget.whoisEnabled
+                    ? OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _fetchWhois,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.refresh),
+                        label: Text(_isLoading ? 'Fetching...' : 'Fetch from WHOIS'),
+                      )
+                    : OutlinedButton(
+                        onPressed: () => widget.onWhoisUpgrade(),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.lock, size: 18),
+                            const SizedBox(width: 8),
+                            const Text('Fetch from WHOIS'),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'Pro',
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onPrimary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
               ),
             ],
           ],

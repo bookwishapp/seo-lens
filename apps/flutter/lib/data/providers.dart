@@ -7,6 +7,7 @@ import 'models/profile.dart';
 import 'models/site_page.dart';
 import 'models/suggestion.dart';
 import 'services/auth_service.dart';
+import 'services/billing_service.dart';
 import 'services/domain_service.dart';
 import 'services/scan_service.dart';
 import 'services/suggestion_service.dart';
@@ -16,6 +17,9 @@ import 'services/suggestion_service.dart';
 // ============================================================================
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+final billingServiceProvider =
+    Provider<BillingService>((ref) => BillingService());
 
 final domainServiceProvider =
     Provider<DomainService>((ref) => DomainService());

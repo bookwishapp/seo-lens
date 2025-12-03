@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/models/domain.dart';
+import '../../data/plan_limits.dart';
 import '../../data/providers.dart';
+import '../../data/services/billing_service.dart';
 
 /// Domains list screen
 class DomainsScreen extends ConsumerStatefulWidget {
@@ -136,9 +138,25 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
     );
   }
 
-  void _showAddDomainDialog(BuildContext context) {
+  void _showAddDomainDialog(BuildContext context) async {
+    // Check plan limits first
+    final profile = await ref.read(currentProfileProvider.future);
+    final domains = await ref.read(domainsProvider.future);
+    final planTier = profile?.planTier ?? 'free';
+    final currentCount = domains.length;
+    final maxDomains = maxDomainsForPlan(planTier);
+
+    if (!canAddDomain(planTier, currentCount)) {
+      // Show upgrade dialog instead
+      if (context.mounted) {
+        _showUpgradeDialog(context, maxDomains);
+      }
+      return;
+    }
+
     final controller = TextEditingController();
 
+    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -178,6 +196,175 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
             child: const Text('Add'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showUpgradeDialog(BuildContext context, int maxDomains) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.lock, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            const Text('Upgrade Required'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You\'ve reached the free plan limit of $maxDomains domain.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Upgrade to Pro or Lifetime to track up to 10 domains, plus get WHOIS lookups, weekly scans, and more!',
+            ),
+            const SizedBox(height: 24),
+            // Plan options
+            _UpgradeOption(
+              title: 'Pro Monthly',
+              price: '\$2.99/month',
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await ref.read(billingServiceProvider).startCheckout(BillingPlan.proMonthly);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            _UpgradeOption(
+              title: 'Pro Yearly',
+              price: '\$19.99/year',
+              badge: 'Save 44%',
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await ref.read(billingServiceProvider).startCheckout(BillingPlan.proYearly);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            _UpgradeOption(
+              title: 'Lifetime',
+              price: '\$49.99 one-time',
+              badge: 'Best Value',
+              highlighted: true,
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await ref.read(billingServiceProvider).startCheckout(BillingPlan.lifetime);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Maybe Later'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UpgradeOption extends StatelessWidget {
+  final String title;
+  final String price;
+  final String? badge;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _UpgradeOption({
+    required this.title,
+    required this.price,
+    this.badge,
+    this.highlighted = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: highlighted
+          ? Theme.of(context).colorScheme.primaryContainer
+          : Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        if (badge != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              badge!,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onPrimary,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      price,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
