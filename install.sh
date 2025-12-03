@@ -4,15 +4,29 @@ set -e
 # Install Next.js dependencies
 cd apps/web
 npm install
+cd ../..
 
-# Clone or update Flutter SDK
-if cd ../../flutter; then
+# Get the project directory name dynamically
+PROJECT_DIR=$(basename "$PWD")
+
+# Clone or update Flutter SDK (parallel to project directory)
+if [ -d "../flutter/.git" ]; then
+  echo "Updating existing Flutter SDK..."
+  cd ../flutter
   git pull
-  cd ../seo_lens
-else
+  cd ../$PROJECT_DIR
+elif [ -d "../flutter" ]; then
+  echo "Removing incomplete Flutter directory..."
   cd ..
-  git clone https://github.com/flutter/flutter.git
-  cd seo_lens
+  rm -rf flutter
+  echo "Cloning fresh Flutter SDK..."
+  git clone https://github.com/flutter/flutter.git flutter
+  cd $PROJECT_DIR
+else
+  echo "Cloning Flutter SDK..."
+  cd ..
+  git clone https://github.com/flutter/flutter.git flutter
+  cd $PROJECT_DIR
 fi
 
 # Verify Flutter installation
