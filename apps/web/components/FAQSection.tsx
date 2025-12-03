@@ -16,7 +16,7 @@ const faqs: FAQ[] = [
   {
     question: 'What does the free plan include?',
     answer:
-      'The free plan lets you connect one domain, scan up to 20 pages, and see SEO suggestions for missing titles, descriptions, and H1 tags. It's a great way to clean up your main site and see how SEO Lens works.',
+      'The free plan lets you connect one domain, scan up to 20 pages, and see SEO suggestions for missing titles, descriptions, and H1 tags. It\'s a great way to clean up your main site and see how SEO Lens works.',
   },
   {
     question: 'How often does SEO Lens scan my sites?',
@@ -26,7 +26,7 @@ const faqs: FAQ[] = [
   {
     question: 'What happens if I cancel Pro?',
     answer:
-      'If you cancel Pro, your account will fall back to the free limits. Your existing data may be kept, but you'll only be able to actively manage and scan within the free plan's domain and page limits.',
+      'If you cancel Pro, your account will fall back to the free limits. Your existing data may be kept, but you\'ll only be able to actively manage and scan within the free plan\'s domain and page limits.',
   },
   {
     question: 'Can SEO Lens change my DNS or redirects for me?',
