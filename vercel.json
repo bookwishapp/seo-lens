@@ -1,6 +1,6 @@
 {
   "buildCommand": "./build.sh",
   "outputDirectory": "apps/web/.next",
-  "installCommand": "cd apps/web && npm install && if cd ../../flutter; then git pull && cd ../seo_lens; else git clone https://github.com/flutter/flutter.git ../flutter; fi && ../flutter/bin/flutter doctor && cd apps/flutter && ../../flutter/bin/flutter pub get",
+  "installCommand": "./install.sh",
   "framework": "nextjs"
 }
