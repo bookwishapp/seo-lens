@@ -2,16 +2,50 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    return {
-      // These rewrites run after checking all pages/routes and static files
-      fallback: [
-        // Serve Flutter SPA for all /app/* routes (except static files)
-        {
-          source: '/app/:path*',
-          destination: '/app/index.html',
-        },
-      ],
-    };
+    return [
+      // Serve Flutter SPA for all /app sub-routes (SPA routing)
+      // Match /app/anything but not /app/file.ext (static files have dots)
+      {
+        source: '/app/report/:path*',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/auth',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/home',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/domains/:path*',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/settings',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/onboarding',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/upgrade',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/referral',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/suggestions',
+        destination: '/app/index.html',
+      },
+      {
+        source: '/app/checkout/:path*',
+        destination: '/app/index.html',
+      },
+    ];
   },
 };
 
