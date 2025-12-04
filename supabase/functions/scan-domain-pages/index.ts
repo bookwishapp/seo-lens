@@ -408,10 +408,14 @@ serve(async (req) => {
       )
     }
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+    console.log(`SUPABASE_URL set: ${!!supabaseUrl}`)
+    console.log(`SERVICE_ROLE_KEY set: ${!!serviceRoleKey}, length: ${serviceRoleKey.length}`)
+    console.log(`SERVICE_ROLE_KEY starts with: ${serviceRoleKey.substring(0, 20)}...`)
+
+    const supabaseClient = createClient(supabaseUrl, serviceRoleKey)
 
     // Load domain
     const { data: domainRow, error: domainError } = await supabaseClient
