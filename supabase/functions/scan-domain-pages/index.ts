@@ -472,34 +472,68 @@ serve(async (req) => {
       pagesScanned++
 
       // Upsert page into database
-      const { data: pageRow, error: upsertError } = await supabaseClient
+      // First, check if page already exists
+      const { data: existingPage } = await supabaseClient
         .from('site_pages')
-        .upsert({
-          user_id: userId,
-          domain_id: domainId,
-          url: normalizedUrl,
-          http_status: pageData.httpStatus,
-          title: pageData.title,
-          meta_description: pageData.metaDescription,
-          canonical_url: pageData.canonical,
-          robots_directive: pageData.robots,
-          h1: pageData.h1,
-          last_scanned_at: new Date().toISOString(),
-        }, {
-          onConflict: 'domain_id,url'
-        })
-        .select()
+        .select('id')
+        .eq('domain_id', domainId)
+        .eq('url', normalizedUrl)
         .maybeSingle()
 
-      if (upsertError || !pageRow) {
-        console.error(`Failed to upsert page ${normalizedUrl}:`, upsertError)
-        continue
+      let pageId: string
+
+      if (existingPage) {
+        // Update existing page
+        const { error: updateError } = await supabaseClient
+          .from('site_pages')
+          .update({
+            http_status: pageData.httpStatus,
+            title: pageData.title,
+            meta_description: pageData.metaDescription,
+            canonical_url: pageData.canonical,
+            robots_directive: pageData.robots,
+            h1: pageData.h1,
+            last_scanned_at: new Date().toISOString(),
+          })
+          .eq('id', existingPage.id)
+
+        if (updateError) {
+          console.error(`Failed to update page ${normalizedUrl}:`, updateError)
+          continue
+        }
+        pageId = existingPage.id
+        console.log(`Updated existing page: ${normalizedUrl} (id: ${pageId})`)
+      } else {
+        // Insert new page
+        const { data: newPage, error: insertError } = await supabaseClient
+          .from('site_pages')
+          .insert({
+            user_id: userId,
+            domain_id: domainId,
+            url: normalizedUrl,
+            http_status: pageData.httpStatus,
+            title: pageData.title,
+            meta_description: pageData.metaDescription,
+            canonical_url: pageData.canonical,
+            robots_directive: pageData.robots,
+            h1: pageData.h1,
+            last_scanned_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single()
+
+        if (insertError || !newPage) {
+          console.error(`Failed to insert page ${normalizedUrl}:`, insertError)
+          continue
+        }
+        pageId = newPage.id
+        console.log(`Inserted new page: ${normalizedUrl} (id: ${pageId})`)
       }
 
-      allPageData.push({ pageData, pageId: pageRow.id })
+      allPageData.push({ pageData, pageId })
 
       // Generate suggestions for this page
-      const pageSuggestions = generateSuggestions(pageData, pageRow.id, userId, domainId, baseOrigin)
+      const pageSuggestions = generateSuggestions(pageData, pageId, userId, domainId, baseOrigin)
       allSuggestions.push(...pageSuggestions)
 
       // Add new internal links to queue
