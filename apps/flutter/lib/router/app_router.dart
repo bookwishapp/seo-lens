@@ -33,11 +33,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         orElse: () => false,
       );
 
-      final isAuthRoute = state.matchedLocation == '/auth';
-      final isSignupRoute = state.matchedLocation == '/signup';
-      final isUpgradeRoute = state.matchedLocation == '/upgrade';
-      // Note: matchedLocation is relative to base-href (/app/), so check for /report/ not /app/report/
-      final isPublicReportRoute = state.matchedLocation.startsWith('/report/');
+      // Use uri.path for the actual requested path
+      final path = state.uri.path;
+      // Debug: log the path being checked
+      print('Router redirect check - path: $path, matchedLocation: ${state.matchedLocation}');
+
+      final isAuthRoute = path == '/auth';
+      final isSignupRoute = path == '/signup';
+      final isUpgradeRoute = path == '/upgrade';
+      // Public report route - no auth required
+      final isPublicReportRoute = path.startsWith('/report/');
 
       // Check for upgrade param: provider first (persists), then URL
       final upgradeParam = pendingUpgradePlan ?? state.uri.queryParameters['upgrade'];
