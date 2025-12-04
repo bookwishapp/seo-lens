@@ -445,14 +445,40 @@ serve(async (req) => {
     const baseOrigin = new URL(startUrl).origin
     const userId = domainRow.user_id
 
+    console.log(`Starting crawl of ${baseOrigin}, max ${maxPages} pages`)
+
+    // NUCLEAR OPTION: Delete ALL existing site_pages and suggestions for this domain
+    // This ensures fresh data on every scan - no stale data issues
+    console.log(`Deleting all existing site_pages for domain ${domainId}...`)
+    const { error: deletePagesError } = await supabaseClient
+      .from('site_pages')
+      .delete()
+      .eq('domain_id', domainId)
+
+    if (deletePagesError) {
+      console.error('Failed to delete existing pages:', deletePagesError)
+    } else {
+      console.log('Deleted all existing site_pages for domain')
+    }
+
+    console.log(`Deleting all existing suggestions for domain ${domainId}...`)
+    const { error: deleteSuggestionsError } = await supabaseClient
+      .from('suggestions')
+      .delete()
+      .eq('domain_id', domainId)
+
+    if (deleteSuggestionsError) {
+      console.error('Failed to delete existing suggestions:', deleteSuggestionsError)
+    } else {
+      console.log('Deleted all existing suggestions for domain')
+    }
+
     // Crawl pages
     const scannedUrls = new Set<string>()
     const urlQueue: string[] = [startUrl]
     const allPageData: { pageData: PageData; pageId: string }[] = []
     const allSuggestions: SuggestionInsert[] = []
     let pagesScanned = 0
-
-    console.log(`Starting crawl of ${baseOrigin}, max ${maxPages} pages`)
 
     while (urlQueue.length > 0 && pagesScanned < maxPages) {
       const url = urlQueue.shift()!
@@ -481,29 +507,15 @@ serve(async (req) => {
 
       pagesScanned++
 
-      // Upsert page into database
-      // First, check if page already exists
-      console.log(`Looking for existing page: domain_id=${domainId}, url="${normalizedUrl}"`)
+      // Insert page (we deleted all existing pages at the start)
+      console.log(`Inserting page: ${normalizedUrl} with title="${pageData.title}", h1="${pageData.h1}"`)
 
-      const { data: existingPage, error: selectError } = await supabaseClient
+      const { data: newPage, error: insertError } = await supabaseClient
         .from('site_pages')
-        .select('id, title, h1, meta_description')
-        .eq('domain_id', domainId)
-        .eq('url', normalizedUrl)
-        .maybeSingle()
-
-      if (selectError) {
-        console.error(`SELECT error for ${normalizedUrl}:`, selectError)
-      }
-
-      console.log(`Existing page lookup result: ${existingPage ? `found id=${existingPage.id}, old title="${existingPage.title}", old h1="${existingPage.h1}"` : 'not found'}`)
-      console.log(`New values: title="${pageData.title}", h1="${pageData.h1}", meta="${pageData.metaDescription}"`)
-
-      let pageId: string
-
-      if (existingPage) {
-        // Update existing page
-        const updateData = {
+        .insert({
+          user_id: userId,
+          domain_id: domainId,
+          url: normalizedUrl,
           http_status: pageData.httpStatus,
           title: pageData.title,
           meta_description: pageData.metaDescription,
@@ -511,48 +523,16 @@ serve(async (req) => {
           robots_directive: pageData.robots,
           h1: pageData.h1,
           last_scanned_at: new Date().toISOString(),
-        }
-        console.log(`Updating page ${existingPage.id} with:`, JSON.stringify(updateData))
+        })
+        .select('id')
+        .single()
 
-        const { error: updateError, data: updateResult } = await supabaseClient
-          .from('site_pages')
-          .update(updateData)
-          .eq('id', existingPage.id)
-          .select('id, title, h1')
-
-        if (updateError) {
-          console.error(`Failed to update page ${normalizedUrl}:`, updateError)
-          continue
-        }
-        console.log(`Update result:`, JSON.stringify(updateResult))
-        pageId = existingPage.id
-        console.log(`Updated existing page: ${normalizedUrl} (id: ${pageId})`)
-      } else {
-        // Insert new page
-        const { data: newPage, error: insertError } = await supabaseClient
-          .from('site_pages')
-          .insert({
-            user_id: userId,
-            domain_id: domainId,
-            url: normalizedUrl,
-            http_status: pageData.httpStatus,
-            title: pageData.title,
-            meta_description: pageData.metaDescription,
-            canonical_url: pageData.canonical,
-            robots_directive: pageData.robots,
-            h1: pageData.h1,
-            last_scanned_at: new Date().toISOString(),
-          })
-          .select('id')
-          .single()
-
-        if (insertError || !newPage) {
-          console.error(`Failed to insert page ${normalizedUrl}:`, insertError)
-          continue
-        }
-        pageId = newPage.id
-        console.log(`Inserted new page: ${normalizedUrl} (id: ${pageId})`)
+      if (insertError || !newPage) {
+        console.error(`Failed to insert page ${normalizedUrl}:`, insertError)
+        continue
       }
+      const pageId = newPage.id
+      console.log(`Inserted page: ${normalizedUrl} (id: ${pageId})`)
 
       allPageData.push({ pageData, pageId })
 
@@ -572,36 +552,18 @@ serve(async (req) => {
       }
     }
 
-    // Clear old suggestions for scanned pages and insert new ones
-    const scannedPageIds = allPageData.map(p => p.pageId)
+    // Insert new suggestions (we already deleted old ones at the start)
+    console.log(`Inserting ${allSuggestions.length} suggestions for ${allPageData.length} pages`)
 
-    console.log(`Clearing and regenerating suggestions for ${scannedPageIds.length} pages`)
-
-    if (scannedPageIds.length > 0) {
-      // Delete ALL old suggestions for this domain first (ensures clean slate)
-      const { error: deleteError, count: deleteCount } = await supabaseClient
+    if (allSuggestions.length > 0) {
+      const { error: insertError } = await supabaseClient
         .from('suggestions')
-        .delete()
-        .eq('domain_id', domainId)
-        .select('id', { count: 'exact', head: true })
+        .insert(allSuggestions)
 
-      if (deleteError) {
-        console.error('Error deleting old suggestions:', deleteError)
+      if (insertError) {
+        console.error('Error inserting suggestions:', insertError)
       } else {
-        console.log(`Deleted old suggestions for domain ${domainId}`)
-      }
-
-      // Insert new suggestions
-      if (allSuggestions.length > 0) {
-        const { error: insertError } = await supabaseClient
-          .from('suggestions')
-          .insert(allSuggestions)
-
-        if (insertError) {
-          console.error('Error inserting suggestions:', insertError)
-        } else {
-          console.log(`Inserted ${allSuggestions.length} new suggestions`)
-        }
+        console.log(`Inserted ${allSuggestions.length} new suggestions`)
       }
     }
 
