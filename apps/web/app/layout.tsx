@@ -11,11 +11,14 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'SEO Lens – SEO checks for every domain you own',
-  description: 'SEO Lens scans your domains, checks up to 50 pages per site, and surfaces clear suggestions for missing titles, meta descriptions, H1 tags, and redirect issues.',
+  title: {
+    default: 'SEO Lens – SEO Audit Tool for All Your Domains',
+    template: '%s | SEO Lens',
+  },
+  description: 'Scan your domains, find missing titles, meta descriptions, and H1 tags. Get clear SEO suggestions and fix issues before they hurt your rankings.',
   openGraph: {
-    title: 'SEO Lens – SEO checks for every domain you own',
-    description: 'SEO Lens scans your domains, checks up to 50 pages per site, and surfaces clear suggestions for missing titles, meta descriptions, H1 tags, and redirect issues.',
+    title: 'SEO Lens – SEO Audit Tool for All Your Domains',
+    description: 'Scan your domains, find missing titles, meta descriptions, and H1 tags. Get clear SEO suggestions and fix issues before they hurt your rankings.',
     url: 'https://seolens.io',
     siteName: 'SEO Lens',
     images: [
@@ -23,7 +26,7 @@ export const metadata: Metadata = {
         url: 'https://seolens.io/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'SEO Lens - SEO checks for every domain you own',
+        alt: 'SEO Lens - SEO Audit Tool for All Your Domains',
       },
     ],
     locale: 'en_US',
@@ -31,8 +34,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SEO Lens – SEO checks for every domain you own',
-    description: 'SEO Lens scans your domains, checks up to 50 pages per site, and surfaces clear suggestions for missing titles, meta descriptions, H1 tags, and redirect issues.',
+    title: 'SEO Lens – SEO Audit Tool for All Your Domains',
+    description: 'Scan your domains, find missing titles, meta descriptions, and H1 tags. Get clear SEO suggestions and fix issues before they hurt your rankings.',
     images: ['https://seolens.io/og-image.png'],
   },
 }
