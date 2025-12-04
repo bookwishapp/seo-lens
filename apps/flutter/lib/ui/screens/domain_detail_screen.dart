@@ -457,6 +457,18 @@ class _HeaderCard extends StatelessWidget {
 
   const _HeaderCard({required this.domain});
 
+  String _formatLastScan(DateTime? lastScan) {
+    if (lastScan == null) return 'Never scanned';
+    final now = DateTime.now();
+    final diff = now.difference(lastScan);
+    if (diff.inMinutes < 1) return 'Scanned just now';
+    if (diff.inMinutes < 60) return 'Scanned ${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return 'Scanned ${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Scanned yesterday';
+    if (diff.inDays < 7) return 'Scanned ${diff.inDays}d ago';
+    return 'Scanned on ${DateFormat.MMMd().format(lastScan)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -481,6 +493,23 @@ class _HeaderCard extends StatelessWidget {
                             color: Colors.grey[600],
                           ),
                     ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.radar,
+                        size: 14,
+                        color: domain.lastScanAt != null ? Colors.green : Colors.grey,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatLastScan(domain.lastScanAt),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: domain.lastScanAt != null ? Colors.green[700] : Colors.grey[600],
+                            ),
+                      ),
+                    ],
+                  ),
                   if (domain.projectTag != null) ...[
                     const SizedBox(height: 8),
                     Chip(
@@ -2135,7 +2164,7 @@ class _UptimeStatusCard extends StatelessWidget {
 
     final isUp = domain.isUp;
     final statusColor = domain.lastUptimeStatus == null
-        ? Colors.grey
+        ? Colors.blue
         : isUp
             ? Colors.green
             : Colors.red;
@@ -2149,18 +2178,20 @@ class _UptimeStatusCard extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.15),
+                color: statusColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                domain.lastUptimeStatus == null
-                    ? Icons.help_outline
-                    : isUp
-                        ? Icons.check_circle
-                        : Icons.error,
-                color: statusColor,
-                size: 32,
-              ),
+              child: domain.lastUptimeStatus == null
+                  ? const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isUp ? Icons.check_circle : Icons.error,
+                      color: statusColor,
+                      size: 32,
+                    ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -2179,13 +2210,17 @@ class _UptimeStatusCard extends StatelessWidget {
                       color: statusColor,
                     ),
                   ),
-                  if (domain.lastUptimeCheckedAt != null) ...[
-                    const SizedBox(height: 4),
+                  const SizedBox(height: 4),
+                  if (domain.lastUptimeCheckedAt != null)
                     Text(
                       'Last checked ${domain.timeSinceLastUptimeCheck}${domain.lastResponseTimeMs != null ? ' • ${domain.formattedResponseTime}' : ''}',
                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    )
+                  else
+                    Text(
+                      'Checks run every ${domain.uptimeCheckIntervalMinutes} min. First check coming soon.',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
-                  ],
                 ],
               ),
             ),

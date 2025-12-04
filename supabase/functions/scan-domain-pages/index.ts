@@ -517,12 +517,21 @@ serve(async (req) => {
     // Clear old suggestions for scanned pages and insert new ones
     const scannedPageIds = allPageData.map(p => p.pageId)
 
+    console.log(`Clearing and regenerating suggestions for ${scannedPageIds.length} pages`)
+
     if (scannedPageIds.length > 0) {
-      // Delete old suggestions for these pages
-      await supabaseClient
+      // Delete ALL old suggestions for this domain first (ensures clean slate)
+      const { error: deleteError, count: deleteCount } = await supabaseClient
         .from('suggestions')
         .delete()
-        .in('page_id', scannedPageIds)
+        .eq('domain_id', domainId)
+        .select('id', { count: 'exact', head: true })
+
+      if (deleteError) {
+        console.error('Error deleting old suggestions:', deleteError)
+      } else {
+        console.log(`Deleted old suggestions for domain ${domainId}`)
+      }
 
       // Insert new suggestions
       if (allSuggestions.length > 0) {
@@ -532,6 +541,8 @@ serve(async (req) => {
 
         if (insertError) {
           console.error('Error inserting suggestions:', insertError)
+        } else {
+          console.log(`Inserted ${allSuggestions.length} new suggestions`)
         }
       }
     }

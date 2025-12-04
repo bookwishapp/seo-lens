@@ -85,10 +85,11 @@ serve(async (req: Request): Promise<Response> => {
       })
     }
 
-    console.log(`Found ${domains?.length ?? 0} domains with uptime monitoring enabled`)
+    console.log(`uptime-worker: Found ${domains?.length ?? 0} domains with uptime_enabled=true`)
 
     let checkedCount = 0
     let skippedCount = 0
+    const checkDetails: Array<{ domain: string; action: string; reason?: string }> = []
 
     for (const domain of (domains ?? []) as DomainRow[]) {
       // Check if it's time to check this domain
@@ -96,12 +97,33 @@ serve(async (req: Request): Promise<Response> => {
         ? new Date(domain.last_uptime_checked_at)
         : null
       const intervalMs = (domain.uptime_check_interval_minutes ?? 10) * 60 * 1000
+      const timeSinceLastCheck = lastChecked ? now.getTime() - lastChecked.getTime() : null
 
-      if (lastChecked && now.getTime() - lastChecked.getTime() < intervalMs) {
-        // Not time yet for this domain
+      // Determine if we should check:
+      // - Always check if never checked before (lastChecked is null)
+      // - Check if enough time has passed since last check
+      const shouldCheck = !lastChecked || timeSinceLastCheck! >= intervalMs
+
+      console.log(
+        `uptime-worker: domain=${domain.domain_name}, ` +
+        `lastChecked=${lastChecked?.toISOString() ?? 'never'}, ` +
+        `intervalMinutes=${domain.uptime_check_interval_minutes}, ` +
+        `timeSinceLastMs=${timeSinceLastCheck ?? 'N/A'}, ` +
+        `shouldCheck=${shouldCheck}`
+      )
+
+      if (!shouldCheck) {
+        const minutesUntilNext = Math.ceil((intervalMs - timeSinceLastCheck!) / 60000)
+        checkDetails.push({
+          domain: domain.domain_name,
+          action: 'skipped',
+          reason: `next check in ${minutesUntilNext} minutes`
+        })
         skippedCount++
         continue
       }
+
+      checkDetails.push({ domain: domain.domain_name, action: 'checking' })
 
       // Perform the uptime check
       const result = await checkDomainUptime(domain.domain_name)
@@ -149,12 +171,16 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
+    console.log(`uptime-worker: Complete. Checked: ${checkedCount}, Skipped: ${skippedCount}, Total: ${domains?.length ?? 0}`)
+
     return new Response(
       JSON.stringify({
         success: true,
         checked: checkedCount,
         skipped: skippedCount,
         total: domains?.length ?? 0,
+        details: checkDetails,
+        timestamp: now.toISOString(),
       }),
       {
         status: 200,
