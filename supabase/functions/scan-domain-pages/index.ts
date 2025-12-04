@@ -448,30 +448,59 @@ serve(async (req) => {
     console.log(`Starting crawl of ${baseOrigin}, max ${maxPages} pages`)
 
     // NUCLEAR OPTION: Delete ALL existing site_pages and suggestions for this domain
-    // This ensures fresh data on every scan - no stale data issues
+    // Count before delete
+    const { count: pageCountBefore } = await supabaseClient
+      .from('site_pages')
+      .select('*', { count: 'exact', head: true })
+      .eq('domain_id', domainId)
+    console.log(`Pages BEFORE delete: ${pageCountBefore}`)
+
+    const { count: suggCountBefore } = await supabaseClient
+      .from('suggestions')
+      .select('*', { count: 'exact', head: true })
+      .eq('domain_id', domainId)
+    console.log(`Suggestions BEFORE delete: ${suggCountBefore}`)
+
+    // Delete site_pages
     console.log(`Deleting all existing site_pages for domain ${domainId}...`)
-    const { error: deletePagesError } = await supabaseClient
+    const { error: deletePagesError, count: deletedPagesCount } = await supabaseClient
       .from('site_pages')
       .delete()
       .eq('domain_id', domainId)
+      .select('*', { count: 'exact', head: true })
 
     if (deletePagesError) {
-      console.error('Failed to delete existing pages:', deletePagesError)
+      console.error('DELETE site_pages FAILED:', JSON.stringify(deletePagesError))
     } else {
-      console.log('Deleted all existing site_pages for domain')
+      console.log(`DELETE site_pages result: deleted ${deletedPagesCount} rows`)
     }
 
+    // Delete suggestions
     console.log(`Deleting all existing suggestions for domain ${domainId}...`)
-    const { error: deleteSuggestionsError } = await supabaseClient
+    const { error: deleteSuggestionsError, count: deletedSuggCount } = await supabaseClient
       .from('suggestions')
       .delete()
       .eq('domain_id', domainId)
+      .select('*', { count: 'exact', head: true })
 
     if (deleteSuggestionsError) {
-      console.error('Failed to delete existing suggestions:', deleteSuggestionsError)
+      console.error('DELETE suggestions FAILED:', JSON.stringify(deleteSuggestionsError))
     } else {
-      console.log('Deleted all existing suggestions for domain')
+      console.log(`DELETE suggestions result: deleted ${deletedSuggCount} rows`)
     }
+
+    // Count after delete
+    const { count: pageCountAfter } = await supabaseClient
+      .from('site_pages')
+      .select('*', { count: 'exact', head: true })
+      .eq('domain_id', domainId)
+    console.log(`Pages AFTER delete: ${pageCountAfter}`)
+
+    const { count: suggCountAfter } = await supabaseClient
+      .from('suggestions')
+      .select('*', { count: 'exact', head: true })
+      .eq('domain_id', domainId)
+    console.log(`Suggestions AFTER delete: ${suggCountAfter}`)
 
     // Crawl pages
     const scannedUrls = new Set<string>()
