@@ -415,7 +415,12 @@ serve(async (req) => {
     console.log(`SERVICE_ROLE_KEY set: ${!!serviceRoleKey}, length: ${serviceRoleKey.length}`)
     console.log(`SERVICE_ROLE_KEY starts with: ${serviceRoleKey.substring(0, 20)}...`)
 
-    const supabaseClient = createClient(supabaseUrl, serviceRoleKey)
+    const supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
 
     // Load domain
     const { data: domainRow, error: domainError } = await supabaseClient
@@ -452,59 +457,30 @@ serve(async (req) => {
     console.log(`Starting crawl of ${baseOrigin}, max ${maxPages} pages`)
 
     // NUCLEAR OPTION: Delete ALL existing site_pages and suggestions for this domain
-    // Count before delete
-    const { count: pageCountBefore } = await supabaseClient
-      .from('site_pages')
-      .select('*', { count: 'exact', head: true })
-      .eq('domain_id', domainId)
-    console.log(`Pages BEFORE delete: ${pageCountBefore}`)
+    // Using a SECURITY DEFINER function to bypass RLS completely
+    console.log(`Calling delete_domain_scan_data(${domainId}) to clear existing data...`)
 
-    const { count: suggCountBefore } = await supabaseClient
-      .from('suggestions')
-      .select('*', { count: 'exact', head: true })
-      .eq('domain_id', domainId)
-    console.log(`Suggestions BEFORE delete: ${suggCountBefore}`)
+    const { data: deleteResult, error: deleteError } = await supabaseClient
+      .rpc('delete_domain_scan_data', { p_domain_id: domainId })
 
-    // Delete site_pages
-    console.log(`Deleting all existing site_pages for domain ${domainId}...`)
-    const { error: deletePagesError, count: deletedPagesCount } = await supabaseClient
-      .from('site_pages')
-      .delete()
-      .eq('domain_id', domainId)
-      .select('*', { count: 'exact', head: true })
-
-    if (deletePagesError) {
-      console.error('DELETE site_pages FAILED:', JSON.stringify(deletePagesError))
+    if (deleteError) {
+      console.error('delete_domain_scan_data FAILED:', JSON.stringify(deleteError))
     } else {
-      console.log(`DELETE site_pages result: deleted ${deletedPagesCount} rows`)
+      console.log(`delete_domain_scan_data result:`, JSON.stringify(deleteResult))
     }
 
-    // Delete suggestions
-    console.log(`Deleting all existing suggestions for domain ${domainId}...`)
-    const { error: deleteSuggestionsError, count: deletedSuggCount } = await supabaseClient
-      .from('suggestions')
-      .delete()
-      .eq('domain_id', domainId)
-      .select('*', { count: 'exact', head: true })
-
-    if (deleteSuggestionsError) {
-      console.error('DELETE suggestions FAILED:', JSON.stringify(deleteSuggestionsError))
-    } else {
-      console.log(`DELETE suggestions result: deleted ${deletedSuggCount} rows`)
-    }
-
-    // Count after delete
+    // Verify deletion
     const { count: pageCountAfter } = await supabaseClient
       .from('site_pages')
       .select('*', { count: 'exact', head: true })
       .eq('domain_id', domainId)
-    console.log(`Pages AFTER delete: ${pageCountAfter}`)
+    console.log(`Pages after delete: ${pageCountAfter}`)
 
     const { count: suggCountAfter } = await supabaseClient
       .from('suggestions')
       .select('*', { count: 'exact', head: true })
       .eq('domain_id', domainId)
-    console.log(`Suggestions AFTER delete: ${suggCountAfter}`)
+    console.log(`Suggestions after delete: ${suggCountAfter}`)
 
     // Crawl pages
     const scannedUrls = new Set<string>()
