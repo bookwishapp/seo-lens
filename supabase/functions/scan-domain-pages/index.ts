@@ -57,6 +57,8 @@ async function parsePage(url: string, baseOrigin: string): Promise<PageData | nu
       headers: {
         'User-Agent': 'SEOLens/1.0 (Page Scanner)',
         'Accept': 'text/html,application/xhtml+xml',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
       },
       redirect: 'follow',
     })
@@ -466,41 +468,63 @@ serve(async (req) => {
 
       console.log(`Scanning page ${pagesScanned + 1}/${maxPages}: ${normalizedUrl}`)
 
-      const pageData = await parsePage(normalizedUrl, baseOrigin)
+      // Add cache-busting query param to force fresh content
+      const cacheBustUrl = normalizedUrl + (normalizedUrl.includes('?') ? '&' : '?') + '_cb=' + Date.now()
+      console.log(`Fetching with cache-bust: ${cacheBustUrl}`)
+      const pageData = await parsePage(cacheBustUrl, baseOrigin)
+      if (pageData) {
+        // Store the clean URL without cache-busting param
+        pageData.url = normalizedUrl
+        console.log(`FETCHED FROM LIVE SITE: title="${pageData.title}", h1="${pageData.h1}", meta="${pageData.metaDescription?.substring(0, 50)}..."`)
+      }
       if (!pageData) continue
 
       pagesScanned++
 
       // Upsert page into database
       // First, check if page already exists
-      const { data: existingPage } = await supabaseClient
+      console.log(`Looking for existing page: domain_id=${domainId}, url="${normalizedUrl}"`)
+
+      const { data: existingPage, error: selectError } = await supabaseClient
         .from('site_pages')
-        .select('id')
+        .select('id, title, h1, meta_description')
         .eq('domain_id', domainId)
         .eq('url', normalizedUrl)
         .maybeSingle()
+
+      if (selectError) {
+        console.error(`SELECT error for ${normalizedUrl}:`, selectError)
+      }
+
+      console.log(`Existing page lookup result: ${existingPage ? `found id=${existingPage.id}, old title="${existingPage.title}", old h1="${existingPage.h1}"` : 'not found'}`)
+      console.log(`New values: title="${pageData.title}", h1="${pageData.h1}", meta="${pageData.metaDescription}"`)
 
       let pageId: string
 
       if (existingPage) {
         // Update existing page
-        const { error: updateError } = await supabaseClient
+        const updateData = {
+          http_status: pageData.httpStatus,
+          title: pageData.title,
+          meta_description: pageData.metaDescription,
+          canonical_url: pageData.canonical,
+          robots_directive: pageData.robots,
+          h1: pageData.h1,
+          last_scanned_at: new Date().toISOString(),
+        }
+        console.log(`Updating page ${existingPage.id} with:`, JSON.stringify(updateData))
+
+        const { error: updateError, data: updateResult } = await supabaseClient
           .from('site_pages')
-          .update({
-            http_status: pageData.httpStatus,
-            title: pageData.title,
-            meta_description: pageData.metaDescription,
-            canonical_url: pageData.canonical,
-            robots_directive: pageData.robots,
-            h1: pageData.h1,
-            last_scanned_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', existingPage.id)
+          .select('id, title, h1')
 
         if (updateError) {
           console.error(`Failed to update page ${normalizedUrl}:`, updateError)
           continue
         }
+        console.log(`Update result:`, JSON.stringify(updateResult))
         pageId = existingPage.id
         console.log(`Updated existing page: ${normalizedUrl} (id: ${pageId})`)
       } else {
