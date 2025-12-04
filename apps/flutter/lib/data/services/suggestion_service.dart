@@ -5,13 +5,13 @@ import '../models/suggestion.dart';
 class SuggestionService {
   final SupabaseClient _client = supabase;
 
-  /// Get all suggestions for the current user (with page info)
+  /// Get all suggestions for the current user (with domain and page info)
   Future<List<Suggestion>> getSuggestions({
     SuggestionStatus? status,
     SuggestionSeverity? severity,
   }) async {
-    // Join with site_pages to get the URL
-    var query = _client.from('suggestions').select('*, site_pages(id, url)');
+    // Join with domains and site_pages to get domain_name and page URL
+    var query = _client.from('suggestions').select('*, domains(domain_name), site_pages(id, url)');
 
     if (status != null) {
       query = query.eq('status', status.toDbString());
@@ -26,12 +26,12 @@ class SuggestionService {
         .toList();
   }
 
-  /// Get suggestions for a specific domain (with page info)
+  /// Get suggestions for a specific domain (with domain and page info)
   Future<List<Suggestion>> getSuggestionsForDomain(String domainId) async {
-    // Join with site_pages to get the URL
+    // Join with domains and site_pages to get domain_name and page URL
     final response = await _client
         .from('suggestions')
-        .select('*, site_pages(id, url)')
+        .select('*, domains(domain_name), site_pages(id, url)')
         .eq('domain_id', domainId)
         .order('created_at', ascending: false);
 
@@ -40,11 +40,11 @@ class SuggestionService {
         .toList();
   }
 
-  /// Get suggestions for a specific page
+  /// Get suggestions for a specific page (with domain and page info)
   Future<List<Suggestion>> getSuggestionsForPage(String pageId) async {
     final response = await _client
         .from('suggestions')
-        .select('*, site_pages(id, url)')
+        .select('*, domains(domain_name), site_pages(id, url)')
         .eq('page_id', pageId)
         .order('created_at', ascending: false);
 

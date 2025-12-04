@@ -196,6 +196,7 @@ class Suggestion {
   final String id;
   final String userId;
   final String? domainId;
+  final String domainName; // Populated when joining with domains
   final String? pageId;
   final SuggestionScope scope;
   final SuggestionPageInfo? page; // Populated when joining with site_pages
@@ -213,6 +214,7 @@ class Suggestion {
     required this.id,
     required this.userId,
     this.domainId,
+    this.domainName = '',
     this.pageId,
     required this.scope,
     this.page,
@@ -231,6 +233,12 @@ class Suggestion {
   SuggestionScope get effectiveScope => pageId != null ? SuggestionScope.page : scope;
 
   factory Suggestion.fromJson(Map<String, dynamic> json) {
+    // Handle nested domains join data
+    String domainName = '';
+    if (json['domains'] != null && json['domains'] is Map) {
+      domainName = (json['domains']['domain_name'] as String?) ?? '';
+    }
+
     // Handle nested site_pages join data
     SuggestionPageInfo? pageInfo;
     if (json['site_pages'] != null && json['site_pages'] is Map) {
@@ -241,6 +249,7 @@ class Suggestion {
       id: json['id'] as String,
       userId: json['user_id'] as String,
       domainId: json['domain_id'] as String?,
+      domainName: domainName,
       pageId: json['page_id'] as String?,
       scope: SuggestionScope.fromString(json['scope'] as String?),
       page: pageInfo,
@@ -263,6 +272,7 @@ class Suggestion {
       'id': id,
       'user_id': userId,
       'domain_id': domainId,
+      'domain_name': domainName,
       'page_id': pageId,
       'scope': scope.name,
       'suggestion_type': suggestionType,
@@ -281,6 +291,7 @@ class Suggestion {
     String? id,
     String? userId,
     String? domainId,
+    String? domainName,
     String? pageId,
     SuggestionScope? scope,
     SuggestionPageInfo? page,
@@ -298,6 +309,7 @@ class Suggestion {
       id: id ?? this.id,
       userId: userId ?? this.userId,
       domainId: domainId ?? this.domainId,
+      domainName: domainName ?? this.domainName,
       pageId: pageId ?? this.pageId,
       scope: scope ?? this.scope,
       page: page ?? this.page,
