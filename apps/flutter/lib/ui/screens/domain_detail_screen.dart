@@ -144,7 +144,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
             action: SnackBarAction(
               label: 'View',
               textColor: Colors.white,
-              onPressed: () => context.go('/app/report/$token'),
+              onPressed: () => context.go('/report/$token'),
             ),
           ),
         );
@@ -196,7 +196,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
 
   void _viewPublicReport(Domain domain) {
     if (domain.publicReportToken == null) return;
-    context.go('/app/report/${domain.publicReportToken}');
+    context.go('/report/${domain.publicReportToken}');
   }
 
   Future<void> _downloadPdfReport(Domain domain) async {
