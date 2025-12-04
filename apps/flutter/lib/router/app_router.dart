@@ -9,6 +9,7 @@ import '../ui/screens/domains_screen.dart';
 import '../ui/screens/home_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/referral_screen.dart';
+import '../ui/screens/report/public_report_screen.dart';
 import '../ui/screens/settings_screen.dart';
 import '../ui/screens/suggestions_screen.dart';
 import '../ui/screens/upgrade_screen.dart';
@@ -35,6 +36,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = state.matchedLocation == '/auth';
       final isSignupRoute = state.matchedLocation == '/signup';
       final isUpgradeRoute = state.matchedLocation == '/upgrade';
+      final isPublicReportRoute = state.matchedLocation.startsWith('/report/');
 
       // Check for upgrade param: provider first (persists), then URL
       final upgradeParam = pendingUpgradePlan ?? state.uri.queryParameters['upgrade'];
@@ -48,7 +50,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // Not authenticated and trying to access protected route
-      if (!isAuthenticated && !isAuthRoute && !isSignupRoute) {
+      if (!isAuthenticated && !isAuthRoute && !isSignupRoute && !isPublicReportRoute) {
         // Preserve upgrade/plan parameter when redirecting to auth
         if (isUpgradeRoute && planParam != null) {
           return '/auth?upgrade=$planParam';
@@ -112,6 +114,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/onboarding',
         name: 'onboarding',
         builder: (context, state) => const OnboardingScreen(),
+      ),
+
+      // Public report route (outside shell, no auth required)
+      GoRoute(
+        path: '/report/:token',
+        name: 'public-report',
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return PublicReportScreen(token: token);
+        },
       ),
 
       // App shell with nested routes

@@ -51,6 +51,13 @@ dependencies:
   intl: ^0.20.1
   uuid: ^4.5.1
 
+  # PDF generation
+  pdf: ^3.11.0
+  printing: ^5.13.0
+
+  # URL launcher
+  url_launcher: ^6.2.5
+
   # SVG support
   flutter_svg: ^2.0.10+1
 

@@ -10,8 +10,11 @@ import 'services/auth_service.dart';
 import 'services/billing_service.dart';
 import 'services/domain_service.dart';
 import 'services/referral_service.dart';
+import 'services/report_service.dart';
+import 'services/report_pdf_service.dart';
 import 'services/scan_service.dart';
 import 'services/suggestion_service.dart';
+import 'models/report_data.dart';
 
 // ============================================================================
 // SERVICE PROVIDERS
@@ -32,6 +35,19 @@ final scanServiceProvider = Provider<ScanService>((ref) => ScanService());
 
 final referralServiceProvider =
     Provider<ReferralService>((ref) => ReferralService());
+
+final reportServiceProvider =
+    Provider<ReportService>((ref) => ReportService(supabase));
+
+final reportPdfServiceProvider =
+    Provider<ReportPdfService>((ref) => ReportPdfService());
+
+/// Provider for fetching public report data by token
+final publicReportProvider =
+    FutureProvider.family<ReportData, String>((ref, token) async {
+  final reportService = ref.watch(reportServiceProvider);
+  return reportService.fetchPublicReport(token);
+});
 
 // ============================================================================
 // AUTH PROVIDERS

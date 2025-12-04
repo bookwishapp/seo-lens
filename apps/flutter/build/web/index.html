@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,21 +18,69 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- SEO Meta Tags -->
+  <title>SEO Lens Dashboard – Manage Your Domain SEO Health</title>
+  <meta name="description" content="Monitor SEO health across all your domains. Track missing titles, meta descriptions, H1 tags, and get actionable suggestions to improve rankings.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="SEO Lens Dashboard – Manage Your Domain SEO Health">
+  <meta property="og:description" content="Monitor SEO health across all your domains. Track missing titles, meta descriptions, H1 tags, and get actionable suggestions to improve rankings.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://seolens.io/app">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="seo_lens">
+  <meta name="apple-mobile-web-app-title" content="SEO Lens">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>seo_lens</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    /* Loading fallback styles */
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+    }
+    .loading-container h1 {
+      font-size: 1.5rem;
+      color: #1e293b;
+      margin-bottom: 1rem;
+    }
+    .loading-container p {
+      color: #64748b;
+    }
+  </style>
 </head>
 <body>
+  <!-- Fallback content for SEO and no-JS -->
+  <div class="loading-container" id="loading">
+    <h1>SEO Lens Dashboard</h1>
+    <p>Loading your domain health dashboard...</p>
+  </div>
+
+  <script>
+    // Hide loading content once Flutter loads
+    if (typeof window.flutterConfiguration === 'undefined') {
+      window.flutterConfiguration = {};
+    }
+    window.flutterConfiguration.onEntrypointLoaded = function(engineInitializer) {
+      document.getElementById('loading').style.display = 'none';
+      engineInitializer.initializeEngine().then(function(appRunner) {
+        appRunner.runApp();
+      });
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

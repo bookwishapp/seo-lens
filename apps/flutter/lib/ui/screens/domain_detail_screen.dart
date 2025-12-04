@@ -1,5 +1,8 @@
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../data/models/domain.dart';
 import '../../data/models/domain_status.dart';
@@ -26,6 +29,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isScanning = false;
+  bool _isReportLoading = false;
 
   @override
   void initState() {
@@ -126,6 +130,109 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
     }
   }
 
+  Future<void> _enablePublicReport(Domain domain) async {
+    setState(() => _isReportLoading = true);
+    try {
+      final token = await ref.read(reportServiceProvider).enablePublicReport(domain.id);
+      ref.invalidate(domainProvider(widget.domainId));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Public report enabled! Link copied to clipboard.'),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'View',
+              textColor: Colors.white,
+              onPressed: () => context.go('/report/$token'),
+            ),
+          ),
+        );
+        // Copy link to clipboard
+        final reportUrl = '${Uri.base.origin}/report/$token';
+        await Clipboard.setData(ClipboardData(text: reportUrl));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to enable report: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isReportLoading = false);
+    }
+  }
+
+  Future<void> _disablePublicReport(Domain domain) async {
+    setState(() => _isReportLoading = true);
+    try {
+      await ref.read(reportServiceProvider).disablePublicReport(domain.id);
+      ref.invalidate(domainProvider(widget.domainId));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Public report disabled'), backgroundColor: Colors.grey),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to disable report: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isReportLoading = false);
+    }
+  }
+
+  void _copyReportLink(Domain domain) {
+    if (domain.publicReportToken == null) return;
+    final reportUrl = '${Uri.base.origin}/report/${domain.publicReportToken}';
+    Clipboard.setData(ClipboardData(text: reportUrl));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Report link copied to clipboard'), backgroundColor: Colors.green),
+    );
+  }
+
+  void _viewPublicReport(Domain domain) {
+    if (domain.publicReportToken == null) return;
+    context.go('/report/${domain.publicReportToken}');
+  }
+
+  Future<void> _downloadPdfReport(Domain domain) async {
+    setState(() => _isReportLoading = true);
+    try {
+      // Fetch the report data
+      final reportData = await ref.read(publicReportProvider(domain.publicReportToken!).future);
+
+      // Generate PDF
+      final pdfService = ref.read(reportPdfServiceProvider);
+      final bytes = await pdfService.buildReportPdf(reportData);
+
+      // Trigger download in web
+      final blob = html.Blob([bytes], 'application/pdf');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', '${domain.domainName.replaceAll('.', '-')}-seo-report.pdf')
+        ..click();
+      html.Url.revokeObjectUrl(url);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF downloaded!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate PDF: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isReportLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final domainAsync = ref.watch(domainProvider(widget.domainId));
@@ -137,6 +244,100 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
       appBar: AppBar(
         title: const Text('Domain Details'),
         actions: [
+          // Reports menu
+          if (_isReportLoading)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (domainAsync.valueOrNull != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.description),
+              tooltip: 'Reports',
+              onSelected: (action) {
+                final domain = domainAsync.valueOrNull!;
+                switch (action) {
+                  case 'view':
+                    _viewPublicReport(domain);
+                    break;
+                  case 'copy':
+                    _copyReportLink(domain);
+                    break;
+                  case 'enable':
+                    _enablePublicReport(domain);
+                    break;
+                  case 'disable':
+                    _disablePublicReport(domain);
+                    break;
+                  case 'pdf':
+                    _downloadPdfReport(domain);
+                    break;
+                }
+              },
+              itemBuilder: (context) {
+                final domain = domainAsync.valueOrNull!;
+                final isEnabled = domain.publicReportEnabled;
+                final hasToken = domain.publicReportToken != null;
+
+                return [
+                  if (isEnabled && hasToken) ...[
+                    const PopupMenuItem(
+                      value: 'view',
+                      child: ListTile(
+                        leading: Icon(Icons.open_in_new),
+                        title: Text('View public report'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'copy',
+                      child: ListTile(
+                        leading: Icon(Icons.link),
+                        title: Text('Copy report link'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'pdf',
+                      child: ListTile(
+                        leading: Icon(Icons.picture_as_pdf),
+                        title: Text('Download PDF'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'disable',
+                      child: ListTile(
+                        leading: Icon(Icons.visibility_off, color: Colors.orange),
+                        title: Text('Disable public report'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                  ] else ...[
+                    const PopupMenuItem(
+                      value: 'enable',
+                      child: ListTile(
+                        leading: Icon(Icons.visibility, color: Colors.green),
+                        title: Text('Enable public report'),
+                        subtitle: Text('Generate a shareable link'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ];
+              },
+            ),
+          // Scan menu
           if (_isScanning)
             const Padding(
               padding: EdgeInsets.all(16.0),

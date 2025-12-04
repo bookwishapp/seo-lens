@@ -32,6 +32,10 @@ class Domain {
   final double? uptime24hPercent;
   final double? uptime7dPercent;
 
+  // Public report fields
+  final bool publicReportEnabled;
+  final String? publicReportToken;
+
   Domain({
     required this.id,
     required this.userId,
@@ -61,6 +65,8 @@ class Domain {
     this.lastResponseTimeMs,
     this.uptime24hPercent,
     this.uptime7dPercent,
+    this.publicReportEnabled = false,
+    this.publicReportToken,
   });
 
   factory Domain.fromJson(Map<String, dynamic> json) {
@@ -99,6 +105,8 @@ class Domain {
       lastResponseTimeMs: json['last_response_time_ms'] as int?,
       uptime24hPercent: (json['uptime_24h_percent'] as num?)?.toDouble(),
       uptime7dPercent: (json['uptime_7d_percent'] as num?)?.toDouble(),
+      publicReportEnabled: json['public_report_enabled'] as bool? ?? false,
+      publicReportToken: json['public_report_token'] as String?,
     );
   }
 
@@ -132,6 +140,8 @@ class Domain {
       'last_response_time_ms': lastResponseTimeMs,
       'uptime_24h_percent': uptime24hPercent,
       'uptime_7d_percent': uptime7dPercent,
+      'public_report_enabled': publicReportEnabled,
+      'public_report_token': publicReportToken,
     };
   }
 
@@ -164,6 +174,8 @@ class Domain {
     int? lastResponseTimeMs,
     double? uptime24hPercent,
     double? uptime7dPercent,
+    bool? publicReportEnabled,
+    String? publicReportToken,
   }) {
     return Domain(
       id: id ?? this.id,
@@ -194,7 +206,15 @@ class Domain {
       lastResponseTimeMs: lastResponseTimeMs ?? this.lastResponseTimeMs,
       uptime24hPercent: uptime24hPercent ?? this.uptime24hPercent,
       uptime7dPercent: uptime7dPercent ?? this.uptime7dPercent,
+      publicReportEnabled: publicReportEnabled ?? this.publicReportEnabled,
+      publicReportToken: publicReportToken ?? this.publicReportToken,
     );
+  }
+
+  /// Get public report URL
+  String? get publicReportUrl {
+    if (publicReportToken == null) return null;
+    return 'https://seolens.io/app/#/report/$publicReportToken';
   }
 
   /// Check if domain expiry is within the given number of days
