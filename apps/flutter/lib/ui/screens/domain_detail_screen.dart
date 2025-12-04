@@ -144,12 +144,12 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
             action: SnackBarAction(
               label: 'View',
               textColor: Colors.white,
-              onPressed: () => context.go('/report/$token'),
+              onPressed: () => context.go('/app/report/$token'),
             ),
           ),
         );
         // Copy link to clipboard
-        final reportUrl = '${Uri.base.origin}/report/$token';
+        final reportUrl = '${Uri.base.origin}/app/report/$token';
         await Clipboard.setData(ClipboardData(text: reportUrl));
       }
     } catch (e) {
@@ -187,7 +187,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
 
   void _copyReportLink(Domain domain) {
     if (domain.publicReportToken == null) return;
-    final reportUrl = '${Uri.base.origin}/report/${domain.publicReportToken}';
+    final reportUrl = '${Uri.base.origin}/app/report/${domain.publicReportToken}';
     Clipboard.setData(ClipboardData(text: reportUrl));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Report link copied to clipboard'), backgroundColor: Colors.green),
@@ -196,7 +196,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
 
   void _viewPublicReport(Domain domain) {
     if (domain.publicReportToken == null) return;
-    context.go('/report/${domain.publicReportToken}');
+    context.go('/app/report/${domain.publicReportToken}');
   }
 
   Future<void> _downloadPdfReport(Domain domain) async {

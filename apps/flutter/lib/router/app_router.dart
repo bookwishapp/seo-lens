@@ -36,7 +36,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = state.matchedLocation == '/auth';
       final isSignupRoute = state.matchedLocation == '/signup';
       final isUpgradeRoute = state.matchedLocation == '/upgrade';
-      final isPublicReportRoute = state.matchedLocation.startsWith('/report/');
+      final isPublicReportRoute = state.matchedLocation.startsWith('/app/report/');
 
       // Check for upgrade param: provider first (persists), then URL
       final upgradeParam = pendingUpgradePlan ?? state.uri.queryParameters['upgrade'];
@@ -117,8 +117,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // Public report route (outside shell, no auth required)
+      // Note: Uses /app/report path since the domain routes / to Next.js marketing site
       GoRoute(
-        path: '/report/:token',
+        path: '/app/report/:token',
         name: 'public-report',
         builder: (context, state) {
           final token = state.pathParameters['token']!;

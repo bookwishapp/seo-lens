@@ -113943,14 +113943,14 @@ j.Om()
 s=A.k6(new A.aYr(),"auth",m,"/auth",m,B.cP)
 r=A.k6(new A.aYs(),"signup",m,"/signup",new A.aYt(),B.cP)
 q=A.k6(new A.aYz(),"onboarding",m,"/onboarding",m,B.cP)
-p=A.k6(new A.aYA(),"public-report",m,"/report/:token",m,B.cP)
+p=A.k6(new A.aYA(),"public-report",m,"/app/report/:token",m,B.cP)
 o=t.yo
 n=A.b([A.k6(m,"home",new A.aYB(),"/home",m,B.cP),A.k6(m,"domains",new A.aYC(),"/domains",m,A.b([A.k6(new A.aYD(),"domain-detail",m,":id",m,B.cP)],o)),A.k6(m,"suggestions",new A.aYE(),"/suggestions",m,B.cP),A.k6(m,"settings",new A.aYF(),"/settings",m,B.cP),A.k6(m,"referral",new A.aYG(),"/referral",m,B.cP),A.k6(new A.aYu(),"upgrade",m,"/upgrade",m,B.cP),A.k6(m,"checkout-success",new A.aYv(),"/checkout/success",m,B.cP),A.k6(m,"checkout-canceled",new A.aYw(),"/checkout/canceled",m,B.cP)],o)
 s=A.b([s,r,q,p,new A.xB(new A.aYx(),new A.bu(m,t.b7),m,n,m)],o)
 return A.bj9(!0,m,m,m,m,"/auth",m,m,m,!1,m,!0,m,!1,new A.a3S(new A.ayJ(s,new A.aYy(l,k,j),5)))},
 $S:712}
 A.aYy.prototype={
-$2(a,b){var s,r,q,p=A.agm(this.a,new A.aYp(),new A.aYq(),t.FB,t.y),o=b.c,n=o==="/auth",m=o==="/signup",l=B.n.b1(o,"/report/"),k=this.b
+$2(a,b){var s,r,q,p=A.agm(this.a,new A.aYp(),new A.aYq(),t.FB,t.y),o=b.c,n=o==="/auth",m=o==="/signup",l=B.n.b1(o,"/app/report/"),k=this.b
 if(k==null)k=b.b.ghT().i(0,"upgrade")
 s=b.b
 r=s.ghT().i(0,"plan")
@@ -114381,7 +114381,7 @@ s=j!=null?7:8
 break
 case 7:j.V(t.J).f.dU(A.h9(new A.Lh(B.M,"View",new A.aJl(n,m),null),null,null,B.az,null,B.a0,null,B.aZN,null,B.bt,null,null,null,null,null,null,null,null,null,null))
 j=A.MD()
-l=j.gql(j)+"/report/"+A.i(m)
+l=j.gql(j)+"/app/report/"+A.i(m)
 s=9
 return A.J(A.v4(new A.oS(l)),$async$xF)
 case 9:case 8:o.push(5)
@@ -114438,13 +114438,13 @@ return A.F($async$CR,r)},
 akz(a){var s,r=a.k2
 if(r==null)return
 s=A.MD()
-A.v4(new A.oS(s.gql(s)+"/report/"+r))
+A.v4(new A.oS(s.gql(s)+"/app/report/"+r))
 this.c.V(t.J).f.dU(B.aT2)},
 azw(a){var s,r=a.k2
 if(r==null)return
 s=this.c
 s.toString
-A.dK(s).ds(0,"/report/"+r,null)},
+A.dK(s).ds(0,"/app/report/"+r,null)},
 xD(a){return this.alQ(a)},
 alQ(a){var s=0,r=A.G(t.H),q=1,p=[],o=[],n=this,m,l,k,j,i,h,g,f,e,d,c,b
 var $async$xD=A.H(function(a0,a1){if(a0===1){p.push(a1)
@@ -114512,7 +114512,7 @@ $S:0}
 A.aJl.prototype={
 $0(){var s=this.a.c
 s.toString
-return A.dK(s).ds(0,"/report/"+this.b,null)},
+return A.dK(s).ds(0,"/app/report/"+this.b,null)},
 $S:0}
 A.aJm.prototype={
 $0(){return this.a.y=!1},
