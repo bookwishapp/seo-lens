@@ -30,7 +30,7 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -187,11 +187,14 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           tabs: const [
             Tab(text: 'Overview', icon: Icon(Icons.dashboard_outlined)),
             Tab(text: 'Essentials', icon: Icon(Icons.checklist)),
             Tab(text: 'Redirects', icon: Icon(Icons.alt_route)),
+            Tab(text: 'Uptime', icon: Icon(Icons.monitor_heart)),
             Tab(text: 'Expiry', icon: Icon(Icons.event)),
+            // TODO: Future "Queries" lens for Google Search Console integration
           ],
         ),
       ),
@@ -239,6 +242,28 @@ class _DomainDetailScreenState extends ConsumerState<DomainDetailScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Redirect plan saved'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+              ),
+              // Uptime Lens
+              _UptimeLens(
+                domain: domain,
+                onUptimeSettingsUpdate: (enabled, interval) async {
+                  await ref.read(domainServiceProvider).updateUptimeSettings(
+                        domainId: widget.domainId,
+                        uptimeEnabled: enabled,
+                        uptimeCheckIntervalMinutes: interval,
+                      );
+                  ref.invalidate(domainProvider(widget.domainId));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(enabled
+                            ? 'Uptime monitoring enabled'
+                            : 'Uptime monitoring disabled'),
                         backgroundColor: Colors.green,
                       ),
                     );
@@ -764,8 +789,12 @@ class _TopSuggestionsCard extends StatelessWidget {
 
 class _SuggestionPreview extends StatelessWidget {
   final Suggestion suggestion;
+  final VoidCallback? onPageTap;
 
-  const _SuggestionPreview({required this.suggestion});
+  const _SuggestionPreview({
+    required this.suggestion,
+    this.onPageTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -786,7 +815,52 @@ class _SuggestionPreview extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                 ),
-                if (suggestion.description != null)
+                // Show page path if available
+                if (suggestion.page != null) ...[
+                  const SizedBox(height: 2),
+                  InkWell(
+                    onTap: onPageTap,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.description_outlined,
+                          size: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          suggestion.page!.path,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (suggestion.effectiveScope == SuggestionScope.domain) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.language,
+                        size: 12,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Domain-wide',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey[600],
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (suggestion.description != null) ...[
+                  const SizedBox(height: 2),
                   Text(
                     suggestion.description!,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -795,6 +869,7 @@ class _SuggestionPreview extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                ],
               ],
             ),
           ),
@@ -937,7 +1012,7 @@ class _StatItem extends StatelessWidget {
 // ESSENTIALS LENS - Pages with SEO elements and filters
 // ============================================================================
 
-class _EssentialsLens extends StatefulWidget {
+class _EssentialsLens extends ConsumerStatefulWidget {
   final Domain domain;
   final AsyncValue<List<SitePage>> pagesAsync;
 
@@ -947,13 +1022,13 @@ class _EssentialsLens extends StatefulWidget {
   });
 
   @override
-  State<_EssentialsLens> createState() => _EssentialsLensState();
+  ConsumerState<_EssentialsLens> createState() => _EssentialsLensState();
 }
 
-class _EssentialsLensState extends State<_EssentialsLens> {
+class _EssentialsLensState extends ConsumerState<_EssentialsLens> {
   String _filter = 'all';
 
-  List<SitePage> _filterPages(List<SitePage> pages) {
+  List<SitePage> _filterPages(List<SitePage> pages, Map<String, int> suggestionCounts) {
     switch (_filter) {
       case 'missing_title':
         return pages.where((p) => p.title == null || p.title!.isEmpty).toList();
@@ -963,6 +1038,12 @@ class _EssentialsLensState extends State<_EssentialsLens> {
         return pages.where((p) => p.h1 == null || p.h1!.isEmpty).toList();
       case 'errors':
         return pages.where((p) => p.httpStatus != null && p.httpStatus! >= 400).toList();
+      case 'has_keyword':
+        return pages.where((p) => p.hasPrimaryKeyword).toList();
+      case 'no_keyword':
+        return pages.where((p) => !p.hasPrimaryKeyword).toList();
+      case 'has_suggestions':
+        return pages.where((p) => (suggestionCounts[p.id] ?? 0) > 0).toList();
       default:
         return pages;
     }
@@ -972,6 +1053,28 @@ class _EssentialsLensState extends State<_EssentialsLens> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Info card about primary keywords
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Set a primary keyword for each page to check if it appears in the title, meta description, and H1.',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
         // Filter chips
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -1007,6 +1110,24 @@ class _EssentialsLensState extends State<_EssentialsLens> {
                 selected: _filter == 'errors',
                 onSelected: (_) => setState(() => _filter = 'errors'),
               ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Has Keyword'),
+                selected: _filter == 'has_keyword',
+                onSelected: (_) => setState(() => _filter = 'has_keyword'),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('No Keyword'),
+                selected: _filter == 'no_keyword',
+                onSelected: (_) => setState(() => _filter = 'no_keyword'),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Has Suggestions'),
+                selected: _filter == 'has_suggestions',
+                onSelected: (_) => setState(() => _filter = 'has_suggestions'),
+              ),
             ],
           ),
         ),
@@ -1014,7 +1135,10 @@ class _EssentialsLensState extends State<_EssentialsLens> {
         Expanded(
           child: widget.pagesAsync.when(
             data: (pages) {
-              final filteredPages = _filterPages(pages);
+              // Get suggestion counts per page
+              final suggestionCountsAsync = ref.watch(suggestionCountsByPageProvider(widget.domain.id));
+              final suggestionCounts = suggestionCountsAsync.valueOrNull ?? {};
+              final filteredPages = _filterPages(pages, suggestionCounts);
 
               if (pages.isEmpty) {
                 return Center(
@@ -1052,7 +1176,18 @@ class _EssentialsLensState extends State<_EssentialsLens> {
                 itemCount: filteredPages.length,
                 itemBuilder: (context, index) {
                   final page = filteredPages[index];
-                  return _PageCard(page: page);
+                  final suggestionCount = suggestionCounts[page.id] ?? 0;
+                  return _PageCard(
+                    page: page,
+                    suggestionCount: suggestionCount,
+                    onKeywordUpdated: (keyword) async {
+                      await ref.read(domainServiceProvider).updatePagePrimaryKeyword(
+                            pageId: page.id,
+                            primaryKeyword: keyword,
+                          );
+                      ref.invalidate(sitePagesProvider(widget.domain.id));
+                    },
+                  );
                 },
               );
             },
@@ -1065,13 +1200,59 @@ class _EssentialsLensState extends State<_EssentialsLens> {
   }
 }
 
-class _PageCard extends StatelessWidget {
+class _PageCard extends StatefulWidget {
   final SitePage page;
+  final int suggestionCount;
+  final Future<void> Function(String?) onKeywordUpdated;
 
-  const _PageCard({required this.page});
+  const _PageCard({
+    required this.page,
+    required this.suggestionCount,
+    required this.onKeywordUpdated,
+  });
+
+  @override
+  State<_PageCard> createState() => _PageCardState();
+}
+
+class _PageCardState extends State<_PageCard> {
+  bool _isEditingKeyword = false;
+  bool _isSaving = false;
+  late TextEditingController _keywordController;
+
+  @override
+  void initState() {
+    super.initState();
+    _keywordController = TextEditingController(text: widget.page.primaryKeyword ?? '');
+  }
+
+  @override
+  void didUpdateWidget(_PageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.page.primaryKeyword != widget.page.primaryKeyword) {
+      _keywordController.text = widget.page.primaryKeyword ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _keywordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveKeyword() async {
+    setState(() => _isSaving = true);
+    final keyword = _keywordController.text.trim();
+    await widget.onKeywordUpdated(keyword.isEmpty ? null : keyword);
+    setState(() {
+      _isSaving = false;
+      _isEditingKeyword = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final page = widget.page;
     final statusColor = page.httpStatus != null
         ? (page.httpStatus! >= 200 && page.httpStatus! < 300
             ? Colors.green
@@ -1117,19 +1298,146 @@ class _PageCard extends StatelessWidget {
                 1: FlexColumnWidth(),
               },
               children: [
-                _buildTableRow(context, 'Title', page.title, page.title != null),
-                _buildTableRow(context, 'Meta', page.metaDescription, page.metaDescription != null),
-                _buildTableRow(context, 'H1', page.h1, page.h1 != null),
-                _buildTableRow(context, 'Canonical', page.canonicalUrl, page.canonicalUrl != null),
+                _buildTableRow(context, 'Title', page.title, page.title != null, page.keywordInTitle),
+                _buildTableRow(context, 'Meta', page.metaDescription, page.metaDescription != null, page.keywordInMeta),
+                _buildTableRow(context, 'H1', page.h1, page.h1 != null, page.keywordInH1),
+                _buildTableRow(context, 'Canonical', page.canonicalUrl, page.canonicalUrl != null, false),
               ],
             ),
+            // Suggestion count row
+            if (widget.suggestionCount > 0) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 16,
+                    color: Colors.orange[700],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${widget.suggestionCount} open suggestion${widget.suggestionCount == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.orange[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const Divider(height: 16),
+            // Primary keyword section
+            _buildKeywordSection(context),
           ],
         ),
       ),
     );
   }
 
-  TableRow _buildTableRow(BuildContext context, String label, String? value, bool present) {
+  Widget _buildKeywordSection(BuildContext context) {
+    final page = widget.page;
+
+    if (_isEditingKeyword) {
+      return Row(
+        children: [
+          Icon(Icons.key, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _keywordController,
+              decoration: const InputDecoration(
+                hintText: 'Enter primary keyword...',
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                border: OutlineInputBorder(),
+              ),
+              style: const TextStyle(fontSize: 13),
+              autofocus: true,
+              onSubmitted: (_) => _saveKeyword(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (_isSaving)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else ...[
+            IconButton(
+              icon: const Icon(Icons.check, size: 20),
+              onPressed: _saveKeyword,
+              color: Colors.green,
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: () {
+                setState(() {
+                  _isEditingKeyword = false;
+                  _keywordController.text = page.primaryKeyword ?? '';
+                });
+              },
+              color: Colors.grey,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ],
+      );
+    }
+
+    return InkWell(
+      onTap: () => setState(() => _isEditingKeyword = true),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Icon(
+              Icons.key,
+              size: 16,
+              color: page.hasPrimaryKeyword ? Colors.blue : Colors.grey[400],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: page.hasPrimaryKeyword
+                  ? Row(
+                      children: [
+                        Text(
+                          page.primaryKeyword!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.blue[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Keyword alignment badges
+                        _KeywordBadge(label: 'T', present: page.keywordInTitle),
+                        const SizedBox(width: 4),
+                        _KeywordBadge(label: 'M', present: page.keywordInMeta),
+                        const SizedBox(width: 4),
+                        _KeywordBadge(label: 'H1', present: page.keywordInH1),
+                      ],
+                    )
+                  : Text(
+                      'Set primary keyword...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[500],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+            ),
+            Icon(Icons.edit, size: 14, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  TableRow _buildTableRow(BuildContext context, String label, String? value, bool present, bool hasKeyword) {
     return TableRow(
       children: [
         Padding(
@@ -1148,6 +1456,14 @@ class _PageCard extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
               ),
+              if (widget.page.hasPrimaryKeyword && label != 'Canonical') ...[
+                const SizedBox(width: 4),
+                Icon(
+                  hasKeyword ? Icons.key : Icons.key_off,
+                  size: 12,
+                  color: hasKeyword ? Colors.blue : Colors.grey[400],
+                ),
+              ],
             ],
           ),
         ),
@@ -1164,6 +1480,36 @@ class _PageCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _KeywordBadge extends StatelessWidget {
+  final String label;
+  final bool present;
+
+  const _KeywordBadge({required this.label, required this.present});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: present ? Colors.green.withOpacity(0.15) : Colors.grey.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: present ? Colors.green : Colors.grey,
+          width: 0.5,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: present ? Colors.green[700] : Colors.grey[600],
+        ),
+      ),
     );
   }
 }
@@ -1559,6 +1905,332 @@ class _RedirectPlanSectionState extends State<_RedirectPlanSection> {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// UPTIME LENS - Uptime monitoring and response time
+// ============================================================================
+
+class _UptimeLens extends StatefulWidget {
+  final Domain domain;
+  final Future<void> Function(bool enabled, int interval) onUptimeSettingsUpdate;
+
+  const _UptimeLens({
+    required this.domain,
+    required this.onUptimeSettingsUpdate,
+  });
+
+  @override
+  State<_UptimeLens> createState() => _UptimeLensState();
+}
+
+class _UptimeLensState extends State<_UptimeLens> {
+  bool _isUpdating = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final domain = widget.domain;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Status card
+          _UptimeStatusCard(domain: domain),
+          const SizedBox(height: 16),
+
+          // Settings card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.settings, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Uptime Monitoring Settings',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Enable uptime monitoring'),
+                    subtitle: Text(
+                      domain.uptimeEnabled
+                          ? 'Checking every ${domain.uptimeCheckIntervalMinutes} minutes'
+                          : 'Turn on to monitor if your site is up',
+                    ),
+                    value: domain.uptimeEnabled,
+                    onChanged: _isUpdating
+                        ? null
+                        : (value) async {
+                            setState(() => _isUpdating = true);
+                            await widget.onUptimeSettingsUpdate(
+                              value,
+                              domain.uptimeCheckIntervalMinutes,
+                            );
+                            setState(() => _isUpdating = false);
+                          },
+                  ),
+                  if (domain.uptimeEnabled) ...[
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    const Text('Check interval:'),
+                    const SizedBox(height: 8),
+                    SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 5, label: Text('5 min')),
+                        ButtonSegment(value: 10, label: Text('10 min')),
+                        ButtonSegment(value: 30, label: Text('30 min')),
+                      ],
+                      selected: {domain.uptimeCheckIntervalMinutes},
+                      onSelectionChanged: _isUpdating
+                          ? null
+                          : (values) async {
+                              setState(() => _isUpdating = true);
+                              await widget.onUptimeSettingsUpdate(
+                                true,
+                                values.first,
+                              );
+                              setState(() => _isUpdating = false);
+                            },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Metrics cards
+          if (domain.uptimeEnabled && domain.lastUptimeCheckedAt != null) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.trending_up,
+                    label: '24h Uptime',
+                    value: domain.uptime24hPercent != null
+                        ? '${domain.uptime24hPercent!.toStringAsFixed(1)}%'
+                        : '--',
+                    color: _getUptimeColor(domain.uptime24hPercent),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.calendar_today,
+                    label: '7d Uptime',
+                    value: domain.uptime7dPercent != null
+                        ? '${domain.uptime7dPercent!.toStringAsFixed(1)}%'
+                        : '--',
+                    color: _getUptimeColor(domain.uptime7dPercent),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.speed,
+                    label: 'Response Time',
+                    value: domain.formattedResponseTime ?? '--',
+                    color: _getResponseTimeColor(domain.lastResponseTimeMs),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.access_time,
+                    label: 'Last Check',
+                    value: domain.timeSinceLastUptimeCheck ?? '--',
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // Info text
+          const SizedBox(height: 24),
+          Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Uptime monitoring checks if https://${domain.domainName} is reachable and measures response time.',
+                      style: TextStyle(fontSize: 13, color: Colors.blue.shade900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getUptimeColor(double? percent) {
+    if (percent == null) return Colors.grey;
+    if (percent >= 99) return Colors.green;
+    if (percent >= 95) return Colors.orange;
+    return Colors.red;
+  }
+
+  Color _getResponseTimeColor(int? ms) {
+    if (ms == null) return Colors.grey;
+    if (ms < 500) return Colors.green;
+    if (ms < 1500) return Colors.orange;
+    return Colors.red;
+  }
+}
+
+class _UptimeStatusCard extends StatelessWidget {
+  final Domain domain;
+
+  const _UptimeStatusCard({required this.domain});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!domain.uptimeEnabled) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Icon(Icons.monitor_heart_outlined, size: 48, color: Colors.grey[400]),
+              const SizedBox(height: 12),
+              const Text(
+                'Uptime monitoring is disabled',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Enable it to track if your site is up',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final isUp = domain.isUp;
+    final statusColor = domain.lastUptimeStatus == null
+        ? Colors.grey
+        : isUp
+            ? Colors.green
+            : Colors.red;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                domain.lastUptimeStatus == null
+                    ? Icons.help_outline
+                    : isUp
+                        ? Icons.check_circle
+                        : Icons.error,
+                color: statusColor,
+                size: 32,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    domain.lastUptimeStatus == null
+                        ? 'Waiting for first check...'
+                        : isUp
+                            ? 'Site is UP'
+                            : 'Site is DOWN',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: statusColor,
+                    ),
+                  ),
+                  if (domain.lastUptimeCheckedAt != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Last checked ${domain.timeSinceLastUptimeCheck}${domain.lastResponseTimeMs != null ? ' • ${domain.formattedResponseTime}' : ''}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MetricCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
           ],
         ),
       ),

@@ -2,5 +2,11 @@
   "buildCommand": "./build.sh",
   "outputDirectory": "apps/web/.next",
   "installCommand": "./install.sh",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/uptime",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

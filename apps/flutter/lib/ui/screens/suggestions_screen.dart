@@ -169,7 +169,7 @@ class _SuggestionCard extends StatelessWidget {
               children: [
                 Chip(
                   label: Text(suggestion.severity.label),
-                  backgroundColor: severityColor.withOpacity(0.2),
+                  backgroundColor: severityColor.withValues(alpha: 0.2),
                   side: BorderSide(color: severityColor),
                   avatar: Icon(
                     Icons.flag,
@@ -180,7 +180,7 @@ class _SuggestionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Chip(
                   label: Text(suggestion.status.label),
-                  backgroundColor: Colors.grey.withOpacity(0.2),
+                  backgroundColor: Colors.grey.withValues(alpha: 0.2),
                 ),
                 const Spacer(),
                 PopupMenuButton<SuggestionStatus>(
@@ -212,6 +212,45 @@ class _SuggestionCard extends StatelessWidget {
               suggestion.title,
               style: Theme.of(context).textTheme.titleMedium,
             ),
+            // Show page info
+            if (suggestion.page != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.description_outlined,
+                    size: 14,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Page: ${suggestion.page!.path}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ],
+              ),
+            ] else if (suggestion.effectiveScope == SuggestionScope.domain) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.language,
+                    size: 14,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Scope: Domain-wide',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                  ),
+                ],
+              ),
+            ],
             if (suggestion.description != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -220,9 +259,24 @@ class _SuggestionCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            Text(
-              'Type: ${suggestion.suggestionType}',
-              style: Theme.of(context).textTheme.bodySmall,
+            // Show impact and effort badges
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Chip(
+                  label: Text(suggestion.impact.label),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  labelStyle: const TextStyle(fontSize: 11),
+                ),
+                Chip(
+                  label: Text(suggestion.effort.label),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  labelStyle: const TextStyle(fontSize: 11),
+                ),
+              ],
             ),
           ],
         ),

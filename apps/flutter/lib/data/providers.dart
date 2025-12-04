@@ -141,6 +141,13 @@ final domainSuggestionsProvider =
   return suggestionService.getSuggestionsForDomain(domainId);
 });
 
+/// Suggestion counts by page for a domain
+final suggestionCountsByPageProvider =
+    FutureProvider.family<Map<String, int>, String>((ref, domainId) async {
+  final suggestionService = ref.watch(suggestionServiceProvider);
+  return suggestionService.getSuggestionCountsByPage(domainId);
+});
+
 /// Suggestion counts by status
 final suggestionCountsProvider =
     FutureProvider<Map<String, int>>((ref) async {

@@ -24,6 +24,7 @@ interface SuggestionInsert {
   user_id: string
   domain_id: string
   page_id: string
+  scope: 'page' | 'domain'
   suggestion_type: string
   title: string
   description: string
@@ -162,6 +163,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Add a better page title',
       description: pageData.title
@@ -178,6 +180,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Title tag is too long',
       description: `The title is ${pageData.title.length} characters. Search engines typically display 50-60 characters.`,
@@ -195,6 +198,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Add a meta description',
       description: 'This page has no meta description. Add one (150-160 characters) to improve click-through rate.',
@@ -209,6 +213,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Meta description is too short',
       description: `Your meta description is only ${pageData.metaDescription.length} characters. Aim for 150-160 characters.`,
@@ -223,6 +228,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Meta description is too long',
       description: `Your meta description is ${pageData.metaDescription.length} characters. It may be truncated in search results.`,
@@ -245,6 +251,7 @@ function generateSuggestions(
           user_id: userId,
           domain_id: domainId,
           page_id: pageId,
+          scope: 'page',
           suggestion_type: type,
           title: 'Canonical URL points to different domain',
           description: `The canonical URL points to ${canonicalUrl.host}. Search engines may ignore this page.`,
@@ -260,6 +267,7 @@ function generateSuggestions(
         user_id: userId,
         domain_id: domainId,
         page_id: pageId,
+        scope: 'page',
         suggestion_type: type,
         title: 'Invalid canonical URL',
         description: `The canonical URL "${pageData.canonical}" is malformed.`,
@@ -278,6 +286,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Add an H1 heading',
       description: 'This page has no H1 heading. Add one to improve SEO structure.',
@@ -295,6 +304,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: 'Page is set to noindex',
       description: 'This page will not appear in search results. Remove noindex if you want it indexed.',
@@ -312,6 +322,7 @@ function generateSuggestions(
       user_id: userId,
       domain_id: domainId,
       page_id: pageId,
+      scope: 'page',
       suggestion_type: type,
       title: `Page returns ${pageData.httpStatus} error`,
       description: `This page responded with HTTP ${pageData.httpStatus}. Fix the error to ensure accessibility.`,

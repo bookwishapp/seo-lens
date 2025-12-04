@@ -149,11 +149,56 @@ enum SuggestionStatus {
   }
 }
 
+/// Scope of a suggestion
+enum SuggestionScope {
+  page,   // Specific to a single page
+  domain; // Applies to the whole domain
+
+  static SuggestionScope fromString(String? value) {
+    switch (value) {
+      case 'page':
+        return SuggestionScope.page;
+      case 'domain':
+        return SuggestionScope.domain;
+      default:
+        return SuggestionScope.page; // Default to page if unknown
+    }
+  }
+}
+
+/// Lightweight page info for display in suggestions
+class SuggestionPageInfo {
+  final String id;
+  final String url;
+
+  SuggestionPageInfo({required this.id, required this.url});
+
+  factory SuggestionPageInfo.fromJson(Map<String, dynamic> json) {
+    return SuggestionPageInfo(
+      id: json['id'] as String,
+      url: json['url'] as String,
+    );
+  }
+
+  /// Get the path portion of the URL (e.g., "/pricing" from "https://example.com/pricing")
+  String get path {
+    try {
+      final uri = Uri.parse(url);
+      final p = uri.path.isEmpty ? '/' : uri.path;
+      return p.length > 50 ? '${p.substring(0, 47)}...' : p;
+    } catch (_) {
+      return url;
+    }
+  }
+}
+
 class Suggestion {
   final String id;
   final String userId;
   final String? domainId;
   final String? pageId;
+  final SuggestionScope scope;
+  final SuggestionPageInfo? page; // Populated when joining with site_pages
   final String suggestionType;
   final String title;
   final String? description;
@@ -169,6 +214,8 @@ class Suggestion {
     required this.userId,
     this.domainId,
     this.pageId,
+    required this.scope,
+    this.page,
     required this.suggestionType,
     required this.title,
     this.description,
@@ -180,12 +227,23 @@ class Suggestion {
     this.resolvedAt,
   });
 
+  /// Effective scope - derives from pageId if scope is not set
+  SuggestionScope get effectiveScope => pageId != null ? SuggestionScope.page : scope;
+
   factory Suggestion.fromJson(Map<String, dynamic> json) {
+    // Handle nested site_pages join data
+    SuggestionPageInfo? pageInfo;
+    if (json['site_pages'] != null && json['site_pages'] is Map) {
+      pageInfo = SuggestionPageInfo.fromJson(json['site_pages'] as Map<String, dynamic>);
+    }
+
     return Suggestion(
       id: json['id'] as String,
       userId: json['user_id'] as String,
       domainId: json['domain_id'] as String?,
       pageId: json['page_id'] as String?,
+      scope: SuggestionScope.fromString(json['scope'] as String?),
+      page: pageInfo,
       suggestionType: json['suggestion_type'] as String,
       title: json['title'] as String,
       description: json['description'] as String?,
@@ -206,6 +264,7 @@ class Suggestion {
       'user_id': userId,
       'domain_id': domainId,
       'page_id': pageId,
+      'scope': scope.name,
       'suggestion_type': suggestionType,
       'title': title,
       'description': description,
@@ -223,6 +282,8 @@ class Suggestion {
     String? userId,
     String? domainId,
     String? pageId,
+    SuggestionScope? scope,
+    SuggestionPageInfo? page,
     String? suggestionType,
     String? title,
     String? description,
@@ -238,6 +299,8 @@ class Suggestion {
       userId: userId ?? this.userId,
       domainId: domainId ?? this.domainId,
       pageId: pageId ?? this.pageId,
+      scope: scope ?? this.scope,
+      page: page ?? this.page,
       suggestionType: suggestionType ?? this.suggestionType,
       title: title ?? this.title,
       description: description ?? this.description,

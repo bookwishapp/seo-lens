@@ -309,6 +309,95 @@ class DomainService {
       'unknown': domains.length - (liveCount + redirectCount + brokenCount),
     };
   }
+
+  /// Update uptime monitoring settings for a domain
+  Future<Domain> updateUptimeSettings({
+    required String domainId,
+    required bool uptimeEnabled,
+    int? uptimeCheckIntervalMinutes,
+  }) async {
+    final updateData = <String, dynamic>{
+      'uptime_enabled': uptimeEnabled,
+    };
+    if (uptimeCheckIntervalMinutes != null) {
+      updateData['uptime_check_interval_minutes'] = uptimeCheckIntervalMinutes;
+    }
+
+    final response = await _client
+        .from('domains')
+        .update(updateData)
+        .eq('id', domainId)
+        .select()
+        .single();
+
+    return Domain.fromJson(response);
+  }
+
+  /// Get uptime checks history for a domain
+  Future<List<UptimeCheck>> getUptimeChecks(
+    String domainId, {
+    int limit = 100,
+  }) async {
+    final response = await _client
+        .from('uptime_checks')
+        .select()
+        .eq('domain_id', domainId)
+        .order('checked_at', ascending: false)
+        .limit(limit);
+
+    return (response as List).map((json) => UptimeCheck.fromJson(json)).toList();
+  }
+
+  /// Update primary keyword for a site page
+  Future<SitePage> updatePagePrimaryKeyword({
+    required String pageId,
+    String? primaryKeyword,
+  }) async {
+    final response = await _client
+        .from('site_pages')
+        .update({'primary_keyword': primaryKeyword})
+        .eq('id', pageId)
+        .select()
+        .single();
+
+    return SitePage.fromJson(response);
+  }
+}
+
+/// Model for uptime check history
+class UptimeCheck {
+  final String id;
+  final String domainId;
+  final DateTime checkedAt;
+  final String status;
+  final int? httpStatus;
+  final int? responseTimeMs;
+  final String? errorMessage;
+
+  UptimeCheck({
+    required this.id,
+    required this.domainId,
+    required this.checkedAt,
+    required this.status,
+    this.httpStatus,
+    this.responseTimeMs,
+    this.errorMessage,
+  });
+
+  factory UptimeCheck.fromJson(Map<String, dynamic> json) {
+    return UptimeCheck(
+      id: json['id'] as String,
+      domainId: json['domain_id'] as String,
+      checkedAt: DateTime.parse(json['checked_at'] as String),
+      status: json['status'] as String,
+      httpStatus: json['http_status'] as int?,
+      responseTimeMs: json['response_time_ms'] as int?,
+      errorMessage: json['error_message'] as String?,
+    );
+  }
+
+  bool get isUp => status == 'up';
+  bool get isDown => status == 'down';
 }
 
 /// Result of a WHOIS lookup

@@ -23,6 +23,15 @@ class Domain {
   final int? pages5xx;
   final DateTime? lastScanAt;
 
+  // Uptime monitoring fields
+  final bool uptimeEnabled;
+  final int uptimeCheckIntervalMinutes;
+  final String? lastUptimeStatus;
+  final DateTime? lastUptimeCheckedAt;
+  final int? lastResponseTimeMs;
+  final double? uptime24hPercent;
+  final double? uptime7dPercent;
+
   Domain({
     required this.id,
     required this.userId,
@@ -45,6 +54,13 @@ class Domain {
     this.pages4xx,
     this.pages5xx,
     this.lastScanAt,
+    this.uptimeEnabled = false,
+    this.uptimeCheckIntervalMinutes = 10,
+    this.lastUptimeStatus,
+    this.lastUptimeCheckedAt,
+    this.lastResponseTimeMs,
+    this.uptime24hPercent,
+    this.uptime7dPercent,
   });
 
   factory Domain.fromJson(Map<String, dynamic> json) {
@@ -74,6 +90,15 @@ class Domain {
       lastScanAt: json['last_scan_at'] != null
           ? DateTime.parse(json['last_scan_at'] as String)
           : null,
+      uptimeEnabled: json['uptime_enabled'] as bool? ?? false,
+      uptimeCheckIntervalMinutes: json['uptime_check_interval_minutes'] as int? ?? 10,
+      lastUptimeStatus: json['last_uptime_status'] as String?,
+      lastUptimeCheckedAt: json['last_uptime_checked_at'] != null
+          ? DateTime.parse(json['last_uptime_checked_at'] as String)
+          : null,
+      lastResponseTimeMs: json['last_response_time_ms'] as int?,
+      uptime24hPercent: (json['uptime_24h_percent'] as num?)?.toDouble(),
+      uptime7dPercent: (json['uptime_7d_percent'] as num?)?.toDouble(),
     );
   }
 
@@ -100,6 +125,13 @@ class Domain {
       'pages_4xx': pages4xx,
       'pages_5xx': pages5xx,
       'last_scan_at': lastScanAt?.toIso8601String(),
+      'uptime_enabled': uptimeEnabled,
+      'uptime_check_interval_minutes': uptimeCheckIntervalMinutes,
+      'last_uptime_status': lastUptimeStatus,
+      'last_uptime_checked_at': lastUptimeCheckedAt?.toIso8601String(),
+      'last_response_time_ms': lastResponseTimeMs,
+      'uptime_24h_percent': uptime24hPercent,
+      'uptime_7d_percent': uptime7dPercent,
     };
   }
 
@@ -125,6 +157,13 @@ class Domain {
     int? pages4xx,
     int? pages5xx,
     DateTime? lastScanAt,
+    bool? uptimeEnabled,
+    int? uptimeCheckIntervalMinutes,
+    String? lastUptimeStatus,
+    DateTime? lastUptimeCheckedAt,
+    int? lastResponseTimeMs,
+    double? uptime24hPercent,
+    double? uptime7dPercent,
   }) {
     return Domain(
       id: id ?? this.id,
@@ -148,6 +187,13 @@ class Domain {
       pages4xx: pages4xx ?? this.pages4xx,
       pages5xx: pages5xx ?? this.pages5xx,
       lastScanAt: lastScanAt ?? this.lastScanAt,
+      uptimeEnabled: uptimeEnabled ?? this.uptimeEnabled,
+      uptimeCheckIntervalMinutes: uptimeCheckIntervalMinutes ?? this.uptimeCheckIntervalMinutes,
+      lastUptimeStatus: lastUptimeStatus ?? this.lastUptimeStatus,
+      lastUptimeCheckedAt: lastUptimeCheckedAt ?? this.lastUptimeCheckedAt,
+      lastResponseTimeMs: lastResponseTimeMs ?? this.lastResponseTimeMs,
+      uptime24hPercent: uptime24hPercent ?? this.uptime24hPercent,
+      uptime7dPercent: uptime7dPercent ?? this.uptime7dPercent,
     );
   }
 
@@ -198,6 +244,42 @@ class Domain {
 
   /// Get total error pages (4xx + 5xx)
   int get totalErrorPages => (pages4xx ?? 0) + (pages5xx ?? 0);
+
+  /// Check if domain is currently up
+  bool get isUp => lastUptimeStatus == 'up';
+
+  /// Check if domain is currently down
+  bool get isDown => lastUptimeStatus == 'down';
+
+  /// Get uptime status level for UI coloring
+  UptimeStatusLevel get uptimeStatusLevel {
+    if (!uptimeEnabled || lastUptimeStatus == null) return UptimeStatusLevel.unknown;
+    if (lastUptimeStatus == 'up') return UptimeStatusLevel.up;
+    return UptimeStatusLevel.down;
+  }
+
+  /// Get human-readable time since last uptime check
+  String? get timeSinceLastUptimeCheck {
+    if (lastUptimeCheckedAt == null) return null;
+    final diff = DateTime.now().difference(lastUptimeCheckedAt!);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  /// Get formatted response time
+  String? get formattedResponseTime {
+    if (lastResponseTimeMs == null) return null;
+    if (lastResponseTimeMs! < 1000) return '${lastResponseTimeMs}ms';
+    return '${(lastResponseTimeMs! / 1000).toStringAsFixed(1)}s';
+  }
+}
+
+enum UptimeStatusLevel {
+  up,
+  down,
+  unknown,
 }
 
 enum HealthScoreLevel {
