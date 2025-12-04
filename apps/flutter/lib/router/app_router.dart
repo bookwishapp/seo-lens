@@ -41,8 +41,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = path == '/auth';
       final isSignupRoute = path == '/signup';
       final isUpgradeRoute = path == '/upgrade';
-      // Public report route - no auth required
-      final isPublicReportRoute = path.startsWith('/report/');
+      // Public report route - no auth required (check both with and without base-href prefix)
+      final isPublicReportRoute = path.startsWith('/report/') || path.startsWith('/app/report/');
 
       // Check for upgrade param: provider first (persists), then URL
       final upgradeParam = pendingUpgradePlan ?? state.uri.queryParameters['upgrade'];
@@ -123,10 +123,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // Public report route (outside shell, no auth required)
-      // Path is relative to base-href (/app/), so use /report/:token
       GoRoute(
         path: '/report/:token',
         name: 'public-report',
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return PublicReportScreen(token: token);
+        },
+      ),
+      // Also handle /app/report/:token in case the full path is used
+      GoRoute(
+        path: '/app/report/:token',
+        name: 'public-report-full',
         builder: (context, state) {
           final token = state.pathParameters['token']!;
           return PublicReportScreen(token: token);
