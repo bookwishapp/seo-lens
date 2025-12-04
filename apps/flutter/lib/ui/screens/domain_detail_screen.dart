@@ -459,14 +459,16 @@ class _HeaderCard extends StatelessWidget {
 
   String _formatLastScan(DateTime? lastScan) {
     if (lastScan == null) return 'Never scanned';
+    // Convert UTC to local time
+    final localScan = lastScan.toLocal();
     final now = DateTime.now();
-    final diff = now.difference(lastScan);
+    final diff = now.difference(localScan);
     if (diff.inMinutes < 1) return 'Scanned just now';
     if (diff.inMinutes < 60) return 'Scanned ${diff.inMinutes}m ago';
     if (diff.inHours < 24) return 'Scanned ${diff.inHours}h ago';
     if (diff.inDays == 1) return 'Scanned yesterday';
     if (diff.inDays < 7) return 'Scanned ${diff.inDays}d ago';
-    return 'Scanned on ${DateFormat.MMMd().format(lastScan)}';
+    return 'Scanned on ${DateFormat.MMMd().format(localScan)}';
   }
 
   @override
@@ -666,7 +668,8 @@ class _HealthScoreCard extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    return DateFormat.yMMMd().add_jm().format(date);
+    // Convert UTC to local time
+    return DateFormat.yMMMd().add_jm().format(date.toLocal());
   }
 }
 
@@ -1686,7 +1689,8 @@ class _StatusSection extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    return DateFormat.yMMMd().add_jm().format(date);
+    // Convert UTC to local time
+    return DateFormat.yMMMd().add_jm().format(date.toLocal());
   }
 }
 
