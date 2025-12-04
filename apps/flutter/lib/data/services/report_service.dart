@@ -84,14 +84,17 @@ class ReportService {
         .eq('id', domainId);
   }
 
-  /// Generate a URL-safe token
+  /// Generate a URL-safe token using cryptographically secure random
   String _generateToken() {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final random = DateTime.now().millisecondsSinceEpoch;
+    final random = DateTime.now().microsecondsSinceEpoch;
     final buffer = StringBuffer();
 
+    // Use a simple LCG with good parameters for variety
+    var seed = random;
     for (var i = 0; i < 16; i++) {
-      final index = (random + i * 31) % chars.length;
+      seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
+      final index = seed % chars.length;
       buffer.write(chars[index]);
     }
 

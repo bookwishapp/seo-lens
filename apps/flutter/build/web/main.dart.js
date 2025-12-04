@@ -113742,9 +113742,9 @@ s=2
 return A.J(q.a.e0("domains").c6(0,A.an(["public_report_enabled",!1],p,p)).em("id",a),$async$FT)
 case 2:return A.E(null,r)}})
 return A.F($async$FT,r)},
-an_(){var s,r,q=Date.now()
-for(s=0,r="";s<16;++s)r+="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[B.v.b4(q+s*31,62)]
-return r.charCodeAt(0)==0?r:r}}
+an_(){var s,r,q,p=1000*Date.now()
+for(s=p,r=0,q="";r<16;++r){s=s*1103515245+12345&2147483647
+q+="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[B.v.b4(s,62)]}return q.charCodeAt(0)==0?q:q}}
 A.a_p.prototype={
 j(a){return"Report not found or not available"},
 $ic6:1}
