@@ -117,9 +117,15 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                     final isDesktop = constraints.maxWidth >= 900;
 
                     if (isDesktop) {
-                      return _DesktopDomainsList(domains: filteredDomains);
+                      return _DesktopDomainsList(
+                        domains: filteredDomains,
+                        onDelete: (domain) => _showDeleteConfirmationDialog(context, domain),
+                      );
                     } else {
-                      return _MobileDomainsList(domains: filteredDomains);
+                      return _MobileDomainsList(
+                        domains: filteredDomains,
+                        onDelete: (domain) => _showDeleteConfirmationDialog(context, domain),
+                      );
                     }
                   },
                 );
@@ -289,6 +295,98 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
       ),
     );
   }
+
+  void _showDeleteConfirmationDialog(BuildContext context, Domain domain) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 12),
+            const Text('Delete Domain?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Delete "${domain.displayName}"?',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'This action cannot be undone.',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            const Text('The following data will be permanently deleted:'),
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.only(left: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• All scan data and analysis'),
+                  Text('• Discovered pages'),
+                  Text('• SEO suggestions and issues'),
+                  Text('• Uptime monitoring history'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _handleDeleteDomain(domain);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleDeleteDomain(Domain domain) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
+
+    try {
+      await ref.read(domainServiceProvider).deleteDomain(domain.id);
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Domain "${domain.displayName}" deleted successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Refresh the domains list
+      ref.invalidate(domainsProvider);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete domain: $e'),
+          backgroundColor: errorColor,
+        ),
+      );
+    }
+  }
 }
 
 class _UpgradeOption extends StatelessWidget {
@@ -372,8 +470,12 @@ class _UpgradeOption extends StatelessWidget {
 
 class _MobileDomainsList extends StatelessWidget {
   final List<Domain> domains;
+  final void Function(Domain) onDelete;
 
-  const _MobileDomainsList({required this.domains});
+  const _MobileDomainsList({
+    required this.domains,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -387,7 +489,38 @@ class _MobileDomainsList extends StatelessWidget {
             leading: const Icon(Icons.language),
             title: Text(domain.displayName),
             subtitle: Text(domain.domainName),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            trailing: PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) {
+                if (value == 'view') {
+                  context.go('/domains/${domain.id}');
+                } else if (value == 'delete') {
+                  onDelete(domain);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'view',
+                  child: Row(
+                    children: [
+                      Icon(Icons.visibility),
+                      SizedBox(width: 12),
+                      Text('View'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 12),
+                      Text('Delete', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             onTap: () => context.go('/domains/${domain.id}'),
           ),
         );
@@ -398,8 +531,12 @@ class _MobileDomainsList extends StatelessWidget {
 
 class _DesktopDomainsList extends StatelessWidget {
   final List<Domain> domains;
+  final void Function(Domain) onDelete;
 
-  const _DesktopDomainsList({required this.domains});
+  const _DesktopDomainsList({
+    required this.domains,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -412,6 +549,7 @@ class _DesktopDomainsList extends StatelessWidget {
             DataColumn(label: Text('Label')),
             DataColumn(label: Text('Project')),
             DataColumn(label: Text('Created')),
+            DataColumn(label: Text('Actions')),
           ],
           rows: domains.map((domain) {
             return DataRow(
@@ -425,6 +563,40 @@ class _DesktopDomainsList extends StatelessWidget {
                 DataCell(Text(
                   '${domain.createdAt.year}-${domain.createdAt.month}-${domain.createdAt.day}',
                 )),
+                DataCell(
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'view') {
+                        context.go('/domains/${domain.id}');
+                      } else if (value == 'delete') {
+                        onDelete(domain);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'view',
+                        child: Row(
+                          children: [
+                            Icon(Icons.visibility),
+                            SizedBox(width: 12),
+                            Text('View'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 12),
+                            Text('Delete', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             );
           }).toList(),
